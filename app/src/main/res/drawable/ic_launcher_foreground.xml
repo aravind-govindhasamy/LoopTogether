@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Center concentric listening radar ring (Safe zone 24 to 84 is 60dp) -->
+    <path
+        android:pathData="M54,24c-16.57,0-30,13.43-30,30s13.43,30,30,30c16.57,0,30-13.43,30-30S70.57,24,54,24z M54,78c-13.25,0-24-10.75-24-24s10.75-24,24-24s24,10.75,24,24S67.25,78,54,78z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="24"
+                android:startY="24"
+                android:endX="84"
+                android:endY="84"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#9D4EDD" />
+                <item android:offset="1.0" android:color="#00E5FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Multi-Note branding core representing LoopTogether party syncs -->
+    <path
+        android:pathData="M48,39v24.28c-1.35-0.81-2.94-1.28-4.67-1.28-4.6,0-8.33,3.13-8.33,7s3.73,7,8.33,7s8.33-3.13,8.33-7V46h14.58v10c-1.35-0.81-2.94-1.28-4.67-1.28-4.6,0-8.33,3.13-8.33,7s3.73,7,8.33,7s8.33-3.13,8.33-7V39H48z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="35"
+                android:startY="39"
+                android:endX="67"
+                android:endY="73"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FC2A8A" />
+                <item android:offset="1.0" android:color="#FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

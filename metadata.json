@@ -1,0 +1,6 @@
+{
+  "name": "LoopTogether",
+  "description": "Real-time social music listening room experience with synchronized YouTube streams, interactive live chat, collaborative queues, and social interaction.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
