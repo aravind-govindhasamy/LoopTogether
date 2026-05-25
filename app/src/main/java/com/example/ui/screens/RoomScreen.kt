@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -33,13 +35,215 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.ChatMessageEntity
 import com.example.data.QueueItemEntity
-import com.example.ui.components.GlowCard
-import com.example.ui.components.AnimatedSineVisualizer
-import com.example.ui.components.FloatingEmojiCanvas
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.viewmodel.LoopTogetherViewModel
 
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import com.example.ui.components.frostedGlassBackground
+
+class WebPlaybackBridgeValue(
+    private val onStateTick: (isPlaying: Boolean, positionSecs: Float) -> Unit
+) {
+    @android.webkit.JavascriptInterface
+    fun onStateChange(isPlaying: Boolean, currentTime: Float) {
+        onStateTick(isPlaying, currentTime)
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onTick(isPlaying: Boolean, currentTime: Float) {
+        onStateTick(isPlaying, currentTime)
+    }
+}
+
+@Composable
+fun YouTubeVideoPlayer(
+    videoId: String,
+    isPlaying: Boolean,
+    playbackPositionMs: Long,
+    isHost: Boolean,
+    onLocalPlayerChanged: (isPlaying: Boolean, positionMs: Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val iframeHtml = remember(videoId) {
+        """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <style>
+                body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #020205; overflow: hidden; }
+                iframe { width: 100%; height: 100%; border: none; }
+            </style>
+        </head>
+        <body>
+            <div id="player"></div>
+            <script>
+                var tag = document.createElement('script');
+                tag.src = "https://www.youtube.com/iframe_api";
+                var firstScriptTag = document.getElementsByTagName('script')[0];
+                firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+                var player;
+                function onYouTubeIframeAPIReady() {
+                    player = new YT.Player('player', {
+                        height: '100%',
+                        width: '100%',
+                        videoId: '$videoId',
+                        playerVars: {
+                            'playsinline': 1,
+                            'controls': 1,
+                            'disablekb': 0,
+                            'fs': 1,
+                            'modestbranding': 1,
+                            'rel': 0,
+                            'showinfo': 0,
+                            'autoplay': 1,
+                            'mute': 0
+                        },
+                        events: {
+                            'onReady': onPlayerReady,
+                            'onStateChange': onPlayerStateChange
+                        }
+                    });
+                }
+
+                function onPlayerReady(event) {
+                    player.seekTo(${playbackPositionMs / 1000f}, true);
+                    if ($isPlaying) {
+                        player.playVideo();
+                    } else {
+                        player.pauseVideo();
+                    }
+                }
+
+                function onPlayerStateChange(event) {
+                    if (window.AndroidInterface && player && typeof player.getCurrentTime === 'function') {
+                        var status = (event.data === 1); // 1 = YT.PlayerState.PLAYING
+                        window.AndroidInterface.onStateChange(status, player.getCurrentTime());
+                    }
+                }
+
+                window.syncPlayback = function(playing, timeSecs) {
+                    if (player && typeof player.getPlayerState === 'function') {
+                        var state = player.getPlayerState();
+                        if (playing) {
+                            if (state !== 1) player.playVideo();
+                        } else {
+                            if (state !== 2) player.pauseVideo();
+                        }
+                        
+                        var diff = Math.abs(player.getCurrentTime() - timeSecs);
+                        // Drift Correction Threshold constraint: 4.0s drift to prevent micro-seeking stutter
+                        if (diff > 4.0) {
+                            player.seekTo(timeSecs, true);
+                        }
+                    }
+                }
+            </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var lastSentIsPlaying by remember { mutableStateOf<Boolean?>(null) }
+    var lastSentPositionMs by remember { mutableStateOf(-9999L) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            webViewRef?.let { webView ->
+                webView.post {
+                    try {
+                        webView.removeJavascriptInterface("AndroidInterface")
+                        webView.stopLoading()
+                        webView.clearHistory()
+                        webView.removeAllViews()
+                        webView.destroy()
+                    } catch (e: Exception) {
+                        // Safe exception absorption
+                    }
+                }
+            }
+            webViewRef = null
+        }
+    }
+
+    LaunchedEffect(videoId, isPlaying, playbackPositionMs) {
+        webViewRef?.let { webView ->
+            // Precision checks: check if standard continuous automatic 1s clock progression ticks
+            val timeDiff = kotlin.math.abs(playbackPositionMs - lastSentPositionMs)
+            val isNormalProgression = isPlaying && lastSentIsPlaying == true && timeDiff in 700L..1500L
+            
+            // Sync play state toggles, major seeks (> 3s), or video transitions
+            val forceSync = !isNormalProgression && (lastSentIsPlaying != isPlaying || timeDiff > 3000L || lastSentPositionMs < 0)
+            
+            if (forceSync) {
+                lastSentIsPlaying = isPlaying
+                lastSentPositionMs = playbackPositionMs
+                val seconds = playbackPositionMs / 1000f
+                webView.post {
+                    try {
+                        webView.evaluateJavascript("if (window.syncPlayback) { window.syncPlayback($isPlaying, $seconds); }", null)
+                    } catch (e: Exception) {
+                        // Safe exception absorption
+                    }
+                }
+            } else if (isNormalProgression) {
+                // Keep progress trackers up to date silently without restarting/re-syncing the player
+                lastSentIsPlaying = isPlaying
+                lastSentPositionMs = playbackPositionMs
+            }
+        }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                webViewClient = WebViewClient()
+                settings.apply {
+                    javaScriptEnabled = true
+                    mediaPlaybackRequiresUserGesture = false
+                    domStorageEnabled = true
+                }
+                setBackgroundColor(0xFF020205.toInt())
+                
+                // Mount JS Bridge for real-time upstream sync reporting
+                addJavascriptInterface(
+                    WebPlaybackBridgeValue { localPlaying, posSecs ->
+                        val localPosMs = (posSecs * 1000).toLong()
+                        // Avoid recomposition loop: only update VM if play state changed or there's a heavy manual seek
+                        val stateChanged = isPlaying != localPlaying
+                        val positionDrifted = kotlin.math.abs(playbackPositionMs - localPosMs) > 3000L
+                        
+                        // Only Host can command authoritative sync actions back to viewModel
+                        if (isHost && (stateChanged || positionDrifted)) {
+                            post {
+                                onLocalPlayerChanged(localPlaying, localPosMs)
+                            }
+                        }
+                    },
+                    "AndroidInterface"
+                )
+
+                tag = iframeHtml
+                loadDataWithBaseURL("https://www.youtube.com", iframeHtml, "text/html", "UTF-8", null)
+                webViewRef = this
+            }
+        },
+        update = { webView ->
+            webViewRef = webView
+            val loadedHtml = webView.tag as? String
+            if (loadedHtml != iframeHtml) {
+                webView.tag = iframeHtml
+                webView.loadDataWithBaseURL("https://www.youtube.com", iframeHtml, "text/html", "UTF-8", null)
+            }
+        },
+        modifier = modifier
+    )
+}
 
 @Composable
 fun RoomScreen(viewModel: LoopTogetherViewModel) {
@@ -54,6 +258,7 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
     val peerTyping by viewModel.isPeerTyping.collectAsState()
     val typingPeerName by viewModel.typingPeerName.collectAsState()
     val latency by viewModel.syncLatencyMs.collectAsState()
+    val activeSocketUsers by viewModel.activeRoomSocketUsers.collectAsState()
 
     var activeTab by remember { mutableStateOf("chat") } // chat, queue, settings
     var chatMessageInput by remember { mutableStateOf("") }
@@ -160,66 +365,127 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
             }
 
             // Scrollable Content
+            var playerViewMode by remember { mutableStateOf("video") }
+            val currentProgress = room?.currentPlaybackPosition ?: 0L
+            val totalDuration = room?.currentSongDuration ?: 180000L
+            val progressPercent = if (totalDuration > 0) currentProgress.toFloat() / totalDuration else 0f
+
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
             ) {
-                // --- 2. CENTER PLAYER MODULE (Album rotating art + title + controls) ---
-                Box(
+                // Segmented View Mode switch (handcrafted & visual)
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(290.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(vertical = 12.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.05f))
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    // Visualizer Waves backing
-                    AnimatedSineVisualizer(
-                        isPlaying = room?.isPlaying == true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(130.dp)
-                            .align(Alignment.BottomCenter)
-                    )
-
-                    // Rotating Vinyl Artwork container
-                    Box(
-                        modifier = Modifier
-                            .size(190.dp)
-                            .shadow(
-                                elevation = if (room?.isPlaying == true) 18.dp else 4.dp,
-                                shape = CircleShape,
-                                ambientColor = NeonPurple,
-                                spotColor = NeonBlue
-                            )
-                            .border(
-                                width = 3.dp,
-                                brush = Brush.sweepGradient(listOf(NeonPurple, NeonBlue, HotPink, NeonPurple)),
-                                shape = CircleShape
-                            )
-                            .clip(CircleShape)
-                            .background(DarkSpaceSurface),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AsyncImage(
-                            model = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop",
-                            contentDescription = "Song artwork",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(8.dp)
-                                .clip(CircleShape)
-                                .rotate(if (room?.isPlaying == true) rotationAngle else 0f)
-                        )
-
-                        // Center pinhole
+                    listOf("vinyl" to "📀 Vinyl Visuals", "video" to "📺 Synced Video Player").forEach { mode ->
+                        val isSelected = playerViewMode == mode.first
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(CosmicBackground)
-                                .border(2.dp, NeonBlue, CircleShape)
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) NeonBlue.copy(alpha = 0.15f) else Color.Transparent)
+                                .clickable { playerViewMode = mode.first }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = mode.second,
+                                color = if (isSelected) NeonBlue else TextSubdued,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                if (playerViewMode == "video") {
+                    val isHost = room?.hostId == user?.id
+                    YouTubeVideoPlayer(
+                        videoId = room?.currentSongId ?: "dQw4w9WgXcQ",
+                        isPlaying = room?.isPlaying == true,
+                        playbackPositionMs = currentProgress,
+                        isHost = isHost,
+                        onLocalPlayerChanged = { playing, posMs ->
+                            if (room?.isPlaying != playing) {
+                                viewModel.togglePlaybackState()
+                            }
+                            if (kotlin.math.abs((room?.currentPlaybackPosition ?: 0L) - posMs) > 2000L) {
+                                        viewModel.seekPlaybackPosition(posMs)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(210.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                } else {
+                    // --- 2. CENTER PLAYER MODULE (Album rotating art + title + controls) ---
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(290.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Visualizer Waves backing
+                        AnimatedSineVisualizer(
+                            isPlaying = room?.isPlaying == true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp)
+                                .align(Alignment.BottomCenter),
+                            songTitle = room?.currentSongTitle ?: ""
                         )
+
+                        // Rotating Vinyl Artwork container
+                        Box(
+                            modifier = Modifier
+                                .size(190.dp)
+                                .shadow(
+                                    elevation = if (room?.isPlaying == true) 18.dp else 4.dp,
+                                    shape = CircleShape,
+                                    ambientColor = NeonPurple,
+                                    spotColor = NeonBlue
+                                )
+                                .border(
+                                    width = 3.dp,
+                                    brush = Brush.sweepGradient(listOf(NeonPurple, NeonBlue, HotPink, NeonPurple)),
+                                    shape = CircleShape
+                                )
+                                .clip(CircleShape)
+                                .background(DarkSpaceSurface),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AsyncImage(
+                                model = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop",
+                                contentDescription = "Song artwork",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp)
+                                    .clip(CircleShape)
+                                    .rotate(if (room?.isPlaying == true) rotationAngle else 0f)
+                            )
+
+                            // Center pinhole
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(CosmicBackground)
+                                    .border(2.dp, NeonBlue, CircleShape)
+                            )
+                        }
                     }
                 }
 
@@ -248,9 +514,6 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Playback progression scrub node
-                val currentProgress = room?.currentPlaybackPosition ?: 0L
-                val totalDuration = room?.currentSongDuration ?: 180000L
-                val progressPercent = if (totalDuration > 0) currentProgress.toFloat() / totalDuration else 0f
 
                 Column {
                     Slider(
@@ -293,12 +556,27 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Emoji reactions quick board
-                    IconButton(
-                        onClick = { viewModel.submitEmojiReaction("🔥") },
-                        modifier = Modifier.background(DarkSpaceSurface, CircleShape)
+                    // Elegant Multi-Emoji Reaction Quick Board
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(DarkSpaceSurface)
+                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
-                        Text("🔥")
+                        listOf("❤️", "🔥", "🎵", "😭", "⚡", "👏").forEach { emoji ->
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .clip(CircleShape)
+                                    .clickable { viewModel.submitEmojiReaction(emoji) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(emoji, fontSize = 15.sp)
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(18.dp))
@@ -384,9 +662,14 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    items(messages) { message ->
+                                    itemsIndexed(messages) { index, message ->
+                                        val isConsecutive = index > 0 && 
+                                                messages[index - 1].userId == message.userId && 
+                                                !messages[index - 1].isSystem && 
+                                                !message.isSystem
+
                                         if (message.isSystem) {
                                             Row(
                                                 modifier = Modifier
@@ -407,6 +690,31 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
                                                     fontWeight = FontWeight.Medium
                                                 )
                                             }
+                                        } else if (isConsecutive) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.Top
+                                            ) {
+                                                // 26dp corresponds to 18sp icon + 8dp spacer
+                                                Spacer(modifier = Modifier.width(26.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(Color.White.copy(alpha = 0.05f))
+                                                        .border(
+                                                            1.dp,
+                                                            if (message.userId == "AI_DJ") HotPink.copy(alpha = 0.2f) else Color.Transparent,
+                                                            RoundedCornerShape(12.dp)
+                                                        )
+                                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = message.content,
+                                                        fontSize = 12.sp,
+                                                        color = Color.White
+                                                    )
+                                                }
+                                            }
                                         } else {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -425,6 +733,7 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
                                                         color = TextSubdued,
                                                         fontWeight = FontWeight.Bold
                                                     )
+                                                    Spacer(modifier = Modifier.height(2.dp))
                                                     Box(
                                                         modifier = Modifier
                                                             .clip(RoundedCornerShape(12.dp))
@@ -521,7 +830,16 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
 
                                 if (queue.isEmpty()) {
                                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        Text("Queue Empty! Go add some tunes.", color = TextSubdued, fontSize = 12.sp)
+                                        EmptyStateView(
+                                            icon = Icons.Default.QueueMusic,
+                                            title = "Queue is Silent & Empty",
+                                            description = "There are no tracks scheduled in this tunnel queue. Search dynamic video links and build your sync array!",
+                                            actionText = "Browse Explore Feeds",
+                                            color = NeonBlue,
+                                            onActionClick = {
+                                                viewModel.navigateTo("explore")
+                                            }
+                                        )
                                     }
                                 } else {
                                     LazyColumn(
@@ -611,45 +929,126 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // --- 4. BOTTOM ACTIVE MEMBERS STRIP ---
-                Text("Loopers in Room (${room?.memberCount ?: 0})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Loopers in Room (${activeSocketUsers.size.coerceAtLeast(1)})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
                 ) {
                     // Current User first
                     item {
+                        val userBreathScale by infiniteTransition.animateFloat(
+                            initialValue = 0.95f,
+                            targetValue = 1.05f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(2500, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "user_breath"
+                        )
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(42.dp)
+                                    .graphicsLayer {
+                                        scaleX = userBreathScale
+                                        scaleY = userBreathScale
+                                    }
                                     .clip(CircleShape)
-                                    .background(NeonBlue.copy(alpha = 0.2f))
-                                    .border(1.dp, NeonBlue, CircleShape),
+                                    .background(NeonBlue.copy(alpha = 0.15f))
+                                    .border(
+                                        2.dp,
+                                        Brush.sweepGradient(listOf(NeonBlue, NeonPurple, NeonBlue)),
+                                        CircleShape
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(user?.profilePicUrl ?: "🎧", fontSize = 18.sp)
+                                Text(user?.profilePicUrl ?: "🎧", fontSize = 20.sp)
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text("You", color = NeonBlue, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("You (Host)", color = NeonBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    // Dynamically mock peer users from pool based on room member count
-                    items(viewModel.peerPool.take((room?.memberCount ?: 3) - 1)) { peer ->
+                    // Dynamically render real other peer users from active socket roster
+                    val otherSocketUsers = activeSocketUsers.filter {
+                        it.optString("userId") != (user?.id ?: "")
+                    }
+                    itemsIndexed(otherSocketUsers) { index, peerJson ->
+                        val peerName = peerJson.optString("userName", "Listener")
+                        val peerAvatar = peerJson.optString("userAvatar", "🎧")
+                        val peerBreathScale by infiniteTransition.animateFloat(
+                            initialValue = 0.94f,
+                            targetValue = 1.06f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1800 + (index * 250), easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "peer_breath_$index"
+                        )
+                        
+                        val isTyping = peerTyping && typingPeerName == peerName
+                        
+                        // Pick glowing ring colors based on status and index
+                        val borderGlow = if (room?.isPlaying == true) {
+                            if (index % 2 == 0) Brush.sweepGradient(listOf(HotPink, NeonPurple, HotPink))
+                            else Brush.sweepGradient(listOf(NeonBlue, NeonPurple, NeonBlue))
+                        } else {
+                            Brush.sweepGradient(listOf(Color.White.copy(alpha = 0.4f), Color.Transparent))
+                        }
+
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(42.dp)
+                                    .graphicsLayer {
+                                        scaleX = peerBreathScale
+                                        scaleY = peerBreathScale
+                                    }
                                     .clip(CircleShape)
                                     .background(DarkSpaceSurface)
-                                    .border(1.dp, NeonPurple.copy(alpha = 0.4f), CircleShape),
+                                    .border(2.dp, borderGlow, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(peer.second, fontSize = 18.sp)
+                                Text(peerAvatar, fontSize = 20.sp)
+                                
+                                // Glowing active listening pulse halo overlay
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .border(2.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                )
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(peer.first, color = Color.White, fontSize = 8.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isTyping) {
+                                    // Animated micro waveform soundwave
+                                    AnimatedEqualizer(
+                                        isPlaying = true,
+                                        color = HotPink,
+                                        barCount = 3,
+                                        barWidth = 2.dp,
+                                        maxHeight = 8.dp,
+                                        modifier = Modifier.padding(end = 4.dp)
+                                    )
+                                } else {
+                                    // Mini green dot
+                                    Box(
+                                        modifier = Modifier
+                                            .size(5.dp)
+                                            .clip(CircleShape)
+                                            .background(ActiveGreen)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
+                                Text(
+                                    text = peerName,
+                                    color = if (isTyping) HotPink else Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = if (isTyping) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
                         }
                     }
                 }
@@ -661,5 +1060,51 @@ fun RoomScreen(viewModel: LoopTogetherViewModel) {
             reactionsFlow = incomingEmojis,
             modifier = Modifier.fillMaxSize()
         )
+
+        // --- TOP-SLIDING LIVE ACTIVITY SIGNAL FEED TOAST ---
+        val liveEvent by viewModel.liveActivityEvent.collectAsState()
+        androidx.compose.animation.AnimatedVisibility(
+            visible = liveEvent != null,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 24.dp)
+        ) {
+            liveEvent?.let { text ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(12.dp, RoundedCornerShape(16.dp))
+                        .border(
+                            1.dp,
+                            Brush.horizontalGradient(listOf(NeonPurple, NeonBlue)),
+                            RoundedCornerShape(16.dp)
+                        ),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xF209090E))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(NeonBlue)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = text,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
     }
 }

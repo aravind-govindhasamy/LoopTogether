@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.components.GlowCard
 import com.example.ui.theme.*
 import com.example.viewmodel.LoopTogetherViewModel
+import coil.compose.AsyncImage
 
 import com.example.ui.components.frostedGlassBackground
 
@@ -85,6 +86,35 @@ fun ExploreScreen(viewModel: LoopTogetherViewModel) {
                 ),
                 shape = RoundedCornerShape(12.dp)
             )
+
+            // Predictive Search recommendation chips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("Synthwave", "Lofi Sunset", "Acoustic", "Chill").forEach { tag ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.05f))
+                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                            .clickable {
+                                textInput = tag
+                                viewModel.triggerSearch(tag)
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "# $tag",
+                            color = if (textInput == tag) NeonBlue else NeonPurple,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -146,27 +176,66 @@ fun ExploreScreen(viewModel: LoopTogetherViewModel) {
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Video Thumbnail (Real Image)
+                            if (song.coverUrl.isNotEmpty()) {
+                                AsyncImage(
+                                    model = song.coverUrl,
+                                    contentDescription = "Cover preview",
+                                    modifier = Modifier
+                                        .size(68.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(68.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.White.copy(alpha = 0.05f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.MusicNote, contentDescription = null, tint = NeonPurple)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                            }
+
                             // Info block
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = song.title,
-                                    fontSize = 14.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
+                                    maxLines = 2,
+                                    lineHeight = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = song.artist, // Channel Name
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = NeonBlue,
                                     maxLines = 1
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "${song.artist} • ${viewModel.formatDuration(song.durationMs)}",
-                                    fontSize = 11.sp,
+                                    text = "${viewModel.formatDuration(song.durationMs)}${if (song.viewCount.isNotEmpty()) " • " + song.viewCount else ""}",
+                                    fontSize = 10.sp,
                                     color = TextSubdued
                                 )
+                                if (song.publishDate.isNotEmpty()) {
+                                    Text(
+                                        text = "Published: ${song.publishDate}",
+                                        fontSize = 9.sp,
+                                        color = TextSubdued.copy(alpha = 0.5f)
+                                    )
+                                }
                             }
 
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
 
                             // Action button
                             Box(

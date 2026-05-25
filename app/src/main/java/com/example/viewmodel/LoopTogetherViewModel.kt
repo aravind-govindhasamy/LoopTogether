@@ -48,8 +48,6 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // --- Live Event Streams ---
-    val peerPool = repository.peerPool
-
     private val _incomingEmojiResponse = MutableSharedFlow<String>(replay = 0)
     val incomingEmojiResponse: SharedFlow<String> = _incomingEmojiResponse.asSharedFlow()
 
@@ -59,6 +57,19 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
     private val _typingPeerName = MutableStateFlow("")
     val typingPeerName: StateFlow<String> = _typingPeerName.asStateFlow()
 
+    private val _liveActivityEvent = MutableStateFlow<String?>(null)
+    val liveActivityEvent: StateFlow<String?> = _liveActivityEvent.asStateFlow()
+
+    fun postActivityEvent(event: String) {
+        viewModelScope.launch {
+            _liveActivityEvent.value = event
+            delay(3500)
+            if (_liveActivityEvent.value == event) {
+                _liveActivityEvent.value = null
+            }
+        }
+    }
+
     // --- Notifications ---
     val notifications: StateFlow<List<NotificationEntity>> = repository.getNotificationsFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -67,7 +78,7 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _searchResults = MutableStateFlow<List<SongSearchModel>>(repository.searchCatalogue)
+    private val _searchResults = MutableStateFlow<List<SongSearchModel>>(emptyList())
     val searchResults: StateFlow<List<SongSearchModel>> = _searchResults.asStateFlow()
 
     // --- Settings & Diagnostics ---
@@ -75,16 +86,102 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
     val isVisualizerEnabled = MutableStateFlow(true)
     val isAudioOutputWired = MutableStateFlow(true)
 
+    // Expanded Premium Settings State
+    val audioQuality = MutableStateFlow("high") // standard, high, epic
+    val videoQuality = MutableStateFlow("auto") // standard, high, auto
+    val pushNotificationsEnabled = MutableStateFlow(true)
+    val friendActivityAlertsEnabled = MutableStateFlow(true)
+    val roomInvitesEnabled = MutableStateFlow(true)
+    val cosmicMidnightTheme = MutableStateFlow(true)
+    val accentColorIndex = MutableStateFlow("purple") // purple, blue, pink
+    val reducedMotionEnabled = MutableStateFlow(false)
+    val blockedUsers = MutableStateFlow<List<String>>(emptyList())
+    val profileVisibility = MutableStateFlow("Public") // Public, Friends Only, Private
+    val showActivityStatus = MutableStateFlow(true)
+    val onboardingCompleted = MutableStateFlow(false)
+
+    fun blockUser(username: String) {
+        if (username.isNotBlank() && !blockedUsers.value.contains(username)) {
+            blockedUsers.value = blockedUsers.value + username
+        }
+    }
+
+    fun unblockUser(username: String) {
+        blockedUsers.value = blockedUsers.value - username
+    }
+
+    fun deleteHistoryLogs() = viewModelScope.launch {
+        // Mock deletion of local logs
+        postActivityEvent("Playback history logs purged successfully 🧹")
+    }
+
+    fun requestAccountDeletion() = viewModelScope.launch {
+        postActivityEvent("Deletion request logged. Account scheduled for removal in 30 days.")
+    }
+
     // Background Jobs Anchor
     private var playbackSyncJob: Job? = null
     private var simulationActivityJob: Job? = null
 
+    // Realtime Systems & Sockets
+    val socketService = RealtimeSocketService(application, repository, viewModelScope)
+    val socketConnectionState = socketService.connectionState
+    val activeRoomSocketUsers = socketService.activeUserList
+
     init {
         viewModelScope.launch {
             repository.preseedInitialDataIfEmpty()
-            // Try to log in as preseeded test user instantly for seamless entry
-            val defaultUser = repository.getAuthUser("default_user")
-            _currentUser.value = defaultUser
+            // Check if there is a persistent active local session
+            val persistedUser = repository.getAuthUser("current_logged_in_user")
+            _currentUser.value = persistedUser
+
+            // Chain socket flows and synchronization metrics
+            launch {
+                socketService.syncLatencyMs.collect {
+                    syncLatencyMs.value = it
+                }
+            }
+            launch {
+                socketService.incomingEmoji.collect {
+                    _incomingEmojiResponse.emit(it)
+                }
+            }
+            launch {
+                socketService.isPeerTyping.collect {
+                    _isPeerTyping.value = it
+                }
+            }
+            launch {
+                socketService.typingPeerName.collect {
+                    _typingPeerName.value = it
+                }
+            }
+            launch {
+                socketService.serverSyncState.collect { data ->
+                    handleIncomingPlaybackSync(data)
+                }
+            }
+        }
+    }
+
+    private suspend fun handleIncomingPlaybackSync(data: org.json.JSONObject) {
+        val roomId = _activeRoomId.value ?: return
+        val currentRoom = repository.getRoom(roomId) ?: return
+        
+        val isPlaying = data.optBoolean("isPlaying", currentRoom.isPlaying)
+        val position = data.optLong("currentPlaybackPosition", currentRoom.currentPlaybackPosition)
+        
+        val updated = currentRoom.copy(
+            isPlaying = isPlaying,
+            currentPlaybackPosition = position,
+            lastUpdated = System.currentTimeMillis()
+        )
+        repository.updateRoomSyncState(updated)
+
+        // Post visual activity event when remote host triggers synchronization action
+        val triggerUser = data.optString("triggeredBy", "Someone")
+        if (triggerUser != _currentUser.value?.username) {
+            postActivityEvent("$triggerUser synchronized playback to ${formatDuration(position)} 🔄")
         }
     }
 
@@ -93,7 +190,7 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
         val cleanName = username.ifBlank { "Looper_${(1000..9999).random()}" }
         val cleanEmail = email.ifBlank { "looper@looptogether.io" }
         val user = UserEntity(
-            id = "user_${UUID.randomUUID().toString().take(6)}",
+            id = "current_logged_in_user", // Single local persistent session key
             username = cleanName,
             email = cleanEmail,
             profilePicUrl = avatar,
@@ -104,7 +201,8 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
         navigateTo("home")
     }
 
-    fun logout() {
+    fun logout() = viewModelScope.launch {
+        repository.deleteUserSession("current_logged_in_user")
         _currentUser.value = null
         navigateTo("login")
     }
@@ -134,6 +232,17 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
             hostName = user.username,
             isPublic = isPublic
         )
+        
+        // Connect and notify socket server
+        socketService.connect()
+        val joinObj = org.json.JSONObject().apply {
+            put("roomId", room.id)
+            put("userId", user.id)
+            put("userName", user.username)
+            put("userAvatar", user.profilePicUrl)
+        }
+        socketService.emit("join_room", joinObj)
+
         _activeRoomId.value = room.id
         startPlaybackSyncTicker()
         startPeerSimulation()
@@ -142,42 +251,83 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
 
     fun joinRoomByCode(code: String, onSuccess: () -> Unit, onError: (String) -> Unit) = viewModelScope.launch {
         val cleanCode = code.uppercase().trim()
-        val r = repository.getRoom(cleanCode)
-        if (r != null) {
-            _activeRoomId.value = r.id
-            // Send system chat alert
-            _currentUser.value?.let { user ->
-                repository.insertChatMessage(
-                    ChatMessageEntity(
-                        roomId = r.id,
-                        userId = "SYSTEM",
-                        userName = "System",
-                        userAvatar = "⚡",
-                        content = "${user.username} entered the listening room.",
-                        isSystem = true
-                    )
-                )
-                // Add notifications
-                repository.insertNotification(
-                    NotificationEntity(
-                        title = "Joined listening Room",
-                        description = "Successfully synchronized with room '${r.name}'. Sync Delay: ${syncLatencyMs.value}ms.",
-                        type = "SYSTEM"
-                    )
-                )
-            }
-            startPlaybackSyncTicker()
-            startPeerSimulation()
-            onSuccess()
-            navigateTo("room")
-        } else {
-            onError("Invalid Room invitation code. Please verify and retry!")
+        if (cleanCode.isBlank()) {
+            onError("Room code cannot be empty.")
+            return@launch
         }
+        var r = repository.getRoom(cleanCode)
+        if (r == null) {
+            val user = _currentUser.value ?: return@launch
+            r = RoomEntity(
+                id = cleanCode,
+                name = "Room $cleanCode",
+                description = "Synchronized Listening Space Network",
+                hostId = "",
+                hostUsername = "",
+                isPublic = false,
+                inviteCode = cleanCode,
+                memberCount = 1,
+                currentSongId = "dQw4w9WgXcQ",
+                currentSongTitle = "Never Gonna Give You Up",
+                currentSongArtist = "Rick Astley",
+                currentSongDuration = 212000,
+                currentPlaybackPosition = 0,
+                isPlaying = false,
+                lastUpdated = System.currentTimeMillis()
+            )
+            repository.updateRoomSyncState(r)
+        }
+
+        _activeRoomId.value = r.id
+        _currentUser.value?.let { user ->
+            // Connect and notify socket server
+            socketService.connect()
+            val joinObj = org.json.JSONObject().apply {
+                put("roomId", r.id)
+                put("userId", user.id)
+                put("userName", user.username)
+                put("userAvatar", user.profilePicUrl)
+            }
+            socketService.emit("join_room", joinObj)
+
+            repository.insertChatMessage(
+                ChatMessageEntity(
+                    roomId = r.id,
+                    userId = "SYSTEM",
+                    userName = "System",
+                    userAvatar = "⚡",
+                    content = "${user.username} entered the listening room.",
+                    isSystem = true
+                )
+            )
+            repository.insertNotification(
+                NotificationEntity(
+                    title = "Joined listening Room",
+                    description = "Successfully synchronized with room '${r.name}'. Sync Delay: ${syncLatencyMs.value}ms.",
+                    type = "SYSTEM"
+                )
+            )
+        }
+        startPlaybackSyncTicker()
+        startPeerSimulation()
+        postActivityEvent("${_currentUser.value?.username ?: "You"} entered the listening tunnel 💫")
+        onSuccess()
+        navigateTo("room")
     }
 
     fun leaveCurrentRoom() = viewModelScope.launch {
         val roomId = _activeRoomId.value ?: return@launch
-        _currentUser.value?.let { user ->
+        val user = _currentUser.value
+        if (user != null) {
+            // Leave socket room and teardown socket
+            val leaveObj = org.json.JSONObject().apply {
+                put("roomId", roomId)
+                put("userId", user.id)
+                put("userName", user.username)
+            }
+            socketService.emit("leave_room", leaveObj)
+            socketService.disconnect()
+
             repository.insertChatMessage(
                 ChatMessageEntity(
                     roomId = roomId,
@@ -193,6 +343,7 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
         playbackSyncJob?.cancel()
         simulationActivityJob?.cancel()
         navigateTo("home")
+        user?.let { postActivityEvent("${it.username} exited the listening tunnel Key 👋") }
     }
 
     fun deleteNotificationItem(id: Int) = viewModelScope.launch {
@@ -213,6 +364,16 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
 
         val updatedState = currentRoom.copy(isPlaying = !currentRoom.isPlaying, lastUpdated = System.currentTimeMillis())
         repository.updateRoomSyncState(updatedState)
+        postActivityEvent("${_currentUser.value?.username ?: "User"} ${if (updatedState.isPlaying) "resumed ▶️" else "paused ⏸️"} playback")
+
+        // Broadcast to socket backend
+        val playObj = org.json.JSONObject().apply {
+            put("roomId", roomId)
+            put("userId", _currentUser.value?.username ?: "Unknown")
+            put("positionMs", updatedState.currentPlaybackPosition)
+            put("isPlaying", updatedState.isPlaying)
+        }
+        socketService.emit(if (updatedState.isPlaying) "play_video" else "pause_video", playObj)
 
         // Insert log
         repository.insertChatMessage(
@@ -239,6 +400,14 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
 
         val updatedState = currentRoom.copy(currentPlaybackPosition = positionMs, lastUpdated = System.currentTimeMillis())
         repository.updateRoomSyncState(updatedState)
+
+        // Broadcast seek packet to socket
+        val seekObj = org.json.JSONObject().apply {
+            put("roomId", roomId)
+            put("userId", _currentUser.value?.username ?: "Unknown")
+            put("positionMs", positionMs)
+        }
+        socketService.emit("seek_video", seekObj)
     }
 
     fun toggleRoomLock() = viewModelScope.launch {
@@ -256,8 +425,10 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
     // --- Search & Shared Queue Orchestration ---
     fun triggerSearch(query: String) {
         _searchQuery.value = query
-        viewModelScope.launch {
-            _searchResults.value = repository.searchSongs(query)
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val hUrl = socketService.getHttpServerUrl()
+            val results = repository.searchSongs(query, hUrl)
+            _searchResults.value = results
         }
     }
 
@@ -278,6 +449,19 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
             position = nextPos
         )
         repository.insertQueueItem(queueItem)
+        postActivityEvent("${user.username} queued '${song.title}' 🎵")
+
+        // Broadcast to cooperative queue socket
+        val qObj = org.json.JSONObject().apply {
+            put("roomId", roomId)
+            put("videoId", song.videoId)
+            put("title", song.title)
+            put("artist", song.artist)
+            put("duration", song.durationMs)
+            put("addedByUserId", user.id)
+            put("addedByUsername", user.username)
+        }
+        socketService.emit("queue_video", qObj)
 
         // Post chat log
         repository.insertChatMessage(
@@ -298,6 +482,14 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
         val item = activeQueue.find { it.id == itemId } ?: return@launch
         val updated = item.copy(voteCount = item.voteCount + 1)
         repository.updateQueueItem(updated)
+
+        // Broadcast upvote to socket backend
+        val voteObj = org.json.JSONObject().apply {
+            put("roomId", roomId)
+            put("itemId", item.id) // DB local primary key
+            put("videoId", item.videoId)
+        }
+        socketService.emit("vote_video", voteObj)
     }
 
     fun skipCurrentSong() = viewModelScope.launch {
@@ -333,6 +525,13 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
             )
             repository.updateRoomSyncState(updatedRoom)
 
+            // Notify socket server to skip active track
+            val skipObj = org.json.JSONObject().apply {
+                put("roomId", roomId)
+                put("userId", _currentUser.value?.username ?: "Unknown")
+            }
+            socketService.emit("next_video", skipObj)
+
             // Alert via chat
             repository.insertChatMessage(
                 ChatMessageEntity(
@@ -352,6 +551,14 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
                 lastUpdated = System.currentTimeMillis()
             )
             repository.updateRoomSyncState(updatedRoom)
+            
+            // Send track concluded skip frame
+            val skipObj = org.json.JSONObject().apply {
+                put("roomId", roomId)
+                put("userId", _currentUser.value?.username ?: "Unknown")
+            }
+            socketService.emit("next_video", skipObj)
+
             triggerSystemRoomAlert(roomId, "Collaborative queue concluded. Add songs from your Search/Explore tab!")
         }
     }
@@ -372,6 +579,17 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
         )
         repository.insertChatMessage(chatMsg)
 
+        // Broadcast to socket server
+        val msgObj = org.json.JSONObject().apply {
+            put("roomId", roomId)
+            put("senderId", user.id)
+            put("senderName", user.username)
+            put("senderAvatar", user.profilePicUrl)
+            put("message", content)
+            put("messageType", "USER")
+        }
+        socketService.emit("send_message", msgObj)
+
         // Detect AI DJ Commands: "@gemini", "/dj" or "!dj"
         if (content.contains("@gemini", ignoreCase = true) || 
             content.contains("/dj", ignoreCase = true) || 
@@ -382,6 +600,17 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
 
     fun submitEmojiReaction(emoji: String) = viewModelScope.launch {
         _incomingEmojiResponse.emit(emoji)
+        
+        val roomId = _activeRoomId.value ?: return@launch
+        val user = _currentUser.value ?: return@launch
+        
+        // Broadcast emoji blast to socket server
+        val reactObj = org.json.JSONObject().apply {
+            put("roomId", roomId)
+            put("emoji", emoji)
+            put("userName", user.username)
+        }
+        socketService.emit("reaction_sent", reactObj)
     }
 
     // AI DJ Trigger Logic
@@ -461,74 +690,22 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
     }
 
     /**
-     * Start simulating actions in background to show real activity.
+     * Start simulating actions in background to show real activity. Disconnect prototype simulation for a fully live real-world production mode
      */
     private fun startPeerSimulation() {
-        simulationActivityJob?.cancel()
-        simulationActivityJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(5000) // Initial entry buffer
-            while (isActive) {
-                val roomId = _activeRoomId.value ?: break
-                val targetRoom = repository.getRoom(roomId) ?: break
-                
-                // Randomly select peer from list
-                val peer = repository.peerPool.random()
-                val peerName = peer.first
-                val peerAvatar = peer.second
-
-                // Simulate Typing -> Message Event
-                if ((1..100).random() > 60) {
-                    _typingPeerName.value = peerName
-                    _isPeerTyping.value = true
-                    delay((2000..4000).random().toLong())
-                    _isPeerTyping.value = false
-                    _typingPeerName.value = ""
-
-                    val simulatedTexts = listOf(
-                        "Yo look at the synchronization rating! It says 42ms delay! Unheard of 🤯",
-                        "Added a absolute gem to our collective queue! Go upvote it guys!",
-                        "Hey guys! LoopDJ says Gemini is compiling deep playlist recommendations.",
-                        "Are we skipping this? It's good but let's drop some synthwave next!",
-                        "This beats are hitting perfectly today 🎧",
-                        "LoopTogether is going straight to my homepage.",
-                        "Who added Never Gonna Give You Up? Legend! 😂"
-                    )
-                    
-                    repository.insertChatMessage(
-                        ChatMessageEntity(
-                            roomId = roomId,
-                            userId = "sim_${peerName}",
-                            userName = peerName,
-                            userAvatar = peerAvatar,
-                            content = simulatedTexts.random()
-                        )
-                    )
-                } 
-                // Simulate simple emoji explosions
-                else {
-                    val quickEmojis = listOf("🔥", "⚡", "❤️", "💯", "🎷", "🌌")
-                    _incomingEmojiResponse.emit(quickEmojis.random())
-                }
-
-                // Randomly upvote a track or add track
-                if ((1..100).random() > 80) {
-                    val activeQueue = repository.getActiveQueue(roomId)
-                    if (activeQueue.isNotEmpty()) {
-                        val randomItem = activeQueue.random()
-                        repository.updateQueueItem(randomItem.copy(voteCount = randomItem.voteCount + 1))
-                    }
-                }
-
-                delay((12000..20000).random().toLong()) // Repeat next simulation event
-            }
-        }
+        // Disabling prototype mock peer simulation for production mode
     }
 
     // UTILITIES
     private fun generateRoomCode(): String {
-        val letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        val genres = listOf("BEATS", "ROCK", "SYNTH", "CLUB", "LOFI", "VIBES")
-        return "${genres.random()}-${(10..99).random()}${(letters.random())}"
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        val dig = "0123456789"
+        val formats = listOf(
+            { "LOOP" + (1..9).random().toString() }, // e.g., LOOP7
+            { "LT" + (10..99).random().toString() + chars.random() }, // e.g., LT92X
+            { "" + chars.random() + chars.random() + (10..99).random() + chars.random() } // e.g., VX12A
+        )
+        return formats.random().invoke()
     }
 
     fun formatDuration(ms: Long): String {

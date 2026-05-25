@@ -33,6 +33,7 @@ fun ProfileScreen(viewModel: LoopTogetherViewModel) {
     val context = LocalContext.current
     val user by viewModel.currentUser.collectAsState()
     val notifications by viewModel.notifications.collectAsState()
+    val availableRooms by viewModel.availableRooms.collectAsState()
 
     var editUsername by remember { mutableStateOf(user?.username ?: "") }
     var editEmail by remember { mutableStateOf(user?.email ?: "") }
@@ -59,47 +60,93 @@ fun ProfileScreen(viewModel: LoopTogetherViewModel) {
         ) {
             // Header Profile Banner
             item {
-                Row(
+                GlowCard(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    borderColor = NeonBlue,
+                    hasGlow = true
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(NeonPurple, NeonBlue))),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = selectedAv, fontSize = 42.sp)
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column {
-                        Text(
-                            text = user?.username ?: "SoundWave_Explorer",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = user?.email ?: "loop.user@example.com",
-                            fontSize = 11.sp,
-                            color = TextSubdued
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(NeonBlue.copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .size(72.dp)
+                                .clip(CircleShape)
+                                .background(Brush.linearGradient(listOf(NeonPurple, NeonBlue))),
+                            contentAlignment = Alignment.Center
                         ) {
+                            Text(text = selectedAv, fontSize = 42.sp)
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Column {
                             Text(
-                                "VIP LOOPER • LEVEL 7",
-                                color = NeonBlue,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold
+                                text = user?.username ?: "SoundWave_Explorer",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
+                            Text(
+                                text = user?.email ?: "loop.user@example.com",
+                                fontSize = 11.sp,
+                                color = TextSubdued
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(NeonBlue.copy(alpha = 0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        "VIP LOOPER • LEVEL 7",
+                                        color = NeonBlue,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(HotPink.copy(alpha = 0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        "COSMIC AURA 🔮",
+                                        color = HotPink,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(14.dp))
+                    
+                    // Music personality vibe tags
+                    Text("PERSONAL MUSIC CORE", fontSize = 9.sp, color = TextSubdued, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf("Synthwave ⚡", "Lofi Sunset 🌆", "Liquidity DnB 🌊", "Unplugged 🎸").forEach { vibe ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.06f))
+                                    .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(vibe, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
                 }
@@ -119,7 +166,7 @@ fun ProfileScreen(viewModel: LoopTogetherViewModel) {
                     ) {
                         Text("Mins Airtime", fontSize = 11.sp, color = TextSubdued)
                         Text(
-                            text = "${user?.listeningMinutes ?: 1420}",
+                            text = "${user?.listeningMinutes ?: 0}",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White
@@ -135,7 +182,7 @@ fun ProfileScreen(viewModel: LoopTogetherViewModel) {
                     ) {
                         Text("Active Tunnels", fontSize = 11.sp, color = TextSubdued)
                         Text(
-                            text = "24",
+                            text = "${availableRooms.size}",
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White
@@ -288,10 +335,10 @@ fun ProfileScreen(viewModel: LoopTogetherViewModel) {
                 }
             }
 
-            // Diagnostic configurations and settings
+            // Trust, Support and Legal Navigation Menus
             item {
                 Text(
-                    text = "Audio Diagnostics & Settings",
+                    text = "Application Navigation Hub",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -303,37 +350,69 @@ fun ProfileScreen(viewModel: LoopTogetherViewModel) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp)),
                     colors = CardDefaults.cardColors(containerColor = DarkSpaceSurface)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // Toggle Audio visualizer
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Aero-Sine Audio Visualizer", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("Perform high-contrast waveform calculations", color = TextSubdued, fontSize = 10.sp)
-                            }
-                            Switch(
-                                checked = visualizerOn,
-                                onCheckedChange = { viewModel.isVisualizerEnabled.value = it },
-                                colors = SwitchDefaults.colors(checkedThumbColor = NeonBlue)
-                            )
+                        // 1. Settings
+                        ProfileNavigationRow(
+                            icon = Icons.Default.Settings,
+                            title = "App Settings preferences",
+                            subtitle = "Sync latency, HD audio, notifications & block lists",
+                            color = NeonBlue
+                        ) {
+                            viewModel.navigateTo("settings")
                         }
 
-                        // Toggle Biometric verification simulation
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Wired Hardware Output Optimization", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("Optimize local buffer sizes for lowest latency", color = TextSubdued, fontSize = 10.sp)
-                            }
-                            Switch(
-                                checked = wireOn,
-                                onCheckedChange = { viewModel.isAudioOutputWired.value = it },
-                                colors = SwitchDefaults.colors(checkedThumbColor = NeonBlue)
-                            )
+                        Divider(color = Color.White.copy(alpha = 0.06f))
+
+                        // 2. Help FAQ
+                        ProfileNavigationRow(
+                            icon = Icons.Default.HelpCenter,
+                            title = "Help Center & FAQ",
+                            subtitle = "Interactive troubleshooting accordion & bug reports",
+                            color = NeonPurple
+                        ) {
+                            viewModel.navigateTo("support")
+                        }
+
+                        Divider(color = Color.White.copy(alpha = 0.06f))
+
+                        // 3. Contact Inquiries
+                        ProfileNavigationRow(
+                            icon = Icons.Default.ContactSupport,
+                            title = "Inquiries & Core Feedback",
+                            subtitle = "Support desks, business proposals, server logs",
+                            color = HotPink
+                        ) {
+                            viewModel.navigateTo("contact")
+                        }
+
+                        Divider(color = Color.White.copy(alpha = 0.06f))
+
+                        // 4. About
+                        ProfileNavigationRow(
+                            icon = Icons.Default.Info,
+                            title = "About LoopTogether",
+                            subtitle = "Product startup blueprint vision & tech badges",
+                            color = ActiveGreen
+                        ) {
+                            viewModel.navigateTo("about")
+                        }
+
+                        Divider(color = Color.White.copy(alpha = 0.06f))
+
+                        // 5. Terms / Privacy
+                        ProfileNavigationRow(
+                            icon = Icons.Default.Gavel,
+                            title = "Legal Covenants & Code of Vibe",
+                            subtitle = "Terms, user data safety, community guidelines",
+                            color = Color.White.copy(alpha = 0.7f)
+                        ) {
+                            viewModel.navigateTo("terms")
                         }
                     }
                 }
@@ -356,5 +435,49 @@ fun ProfileScreen(viewModel: LoopTogetherViewModel) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ProfileNavigationRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(color.copy(alpha = 0.15f))
+                .border(1.dp, color.copy(alpha = 0.3f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = TextSubdued, fontSize = 10.sp)
+        }
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = TextSubdued,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }

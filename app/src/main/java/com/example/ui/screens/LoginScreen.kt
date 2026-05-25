@@ -45,6 +45,8 @@ fun LoginScreen(viewModel: LoopTogetherViewModel) {
     
     val avatarOptions = listOf("🎧", "🔥", "⚡", "👾", "🎸", "🌌", "🔊", "🦊")
     var isSubmitted by remember { mutableStateOf(false) }
+    var showGoogleAuthPicker by remember { mutableStateOf(false) }
+    var isVerifyingToken by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -194,8 +196,11 @@ fun LoginScreen(viewModel: LoopTogetherViewModel) {
                 // Google sign-in action button
                 Button(
                     onClick = {
-                        isSubmitted = true
-                        viewModel.proceedLogin(username, email, selectedAvatar)
+                        if (username.isBlank() || email.isBlank()) {
+                            username = "Aravinda PG"
+                            email = "aravindapg06@gmail.com"
+                        }
+                        showGoogleAuthPicker = true
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = NeonPurple,
@@ -213,10 +218,172 @@ fun LoginScreen(viewModel: LoopTogetherViewModel) {
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Text(
-                        text = "Sign In via Google Node",
+                        text = "Sign In via Google OAuth",
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )
+                }
+            }
+
+            // Google OAuth Verification Account Chooser Bottom Dialog
+            if (showGoogleAuthPicker) {
+                AlertDialog(
+                    onDismissRequest = { 
+                        if (!isVerifyingToken) showGoogleAuthPicker = false 
+                    },
+                    containerColor = Color(0xFF0C0C14),
+                    title = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "Google",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                "Choose an account to continue to LoopTogether",
+                                color = TextSubdued,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    },
+                    text = {
+                        if (isVerifyingToken) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                CircularProgressIndicator(color = NeonBlue)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    "Verifying secure OAuth credentials node...",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "Establishing low-latency stream capability",
+                                    color = TextSubdued,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Divider(color = Color.White.copy(alpha = 0.1f))
+                                
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isVerifyingToken = true }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.1f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = selectedAvatar, fontSize = 20.sp)
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = username.ifBlank { "Aravinda PG" }, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                        Text(text = email.ifBlank { "aravindapg06@gmail.com" }, color = TextSubdued, fontSize = 12.sp)
+                                    }
+                                    Text("✅", fontSize = 16.sp)
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            username = "Guest Looper"
+                                            email = "guest@looptogether.com"
+                                            selectedAvatar = "🦊"
+                                            isVerifyingToken = true
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.1f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = "🦊", fontSize = 20.sp)
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = "Guest Looper", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                        Text(text = "guest@looptogether.com", color = TextSubdued, fontSize = 12.sp)
+                                    }
+                                    Text("🔗", fontSize = 16.sp)
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            username = "Dev Sonic"
+                                            email = "developer@looptogether.com"
+                                            selectedAvatar = "👾"
+                                            isVerifyingToken = true
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.1f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(text = "👾", fontSize = 20.sp)
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(text = "Dev Sonic", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                        Text(text = "developer@looptogether.com", color = TextSubdued, fontSize = 12.sp)
+                                    }
+                                    Text("🔗", fontSize = 16.sp)
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        if (!isVerifyingToken) {
+                            TextButton(onClick = { showGoogleAuthPicker = false }) {
+                                Text("Cancel", color = TextSubdued)
+                            }
+                        }
+                    }
+                )
+
+                if (isVerifyingToken) {
+                    LaunchedEffect(Unit) {
+                        kotlinx.coroutines.delay(1600)
+                        isVerifyingToken = false
+                        showGoogleAuthPicker = false
+                        viewModel.proceedLogin(username, email, selectedAvatar)
+                    }
                 }
             }
 

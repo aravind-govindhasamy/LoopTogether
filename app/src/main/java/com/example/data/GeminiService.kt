@@ -73,13 +73,12 @@ object GeminiClient {
 
     /**
      * Call the server-side Gemini 3.5 Flash model with standard text instructions.
-     * Incorporates protective mock fallbacks if network offline, or api key not active.
      */
     suspend fun generateAiContent(prompt: String, systemPrompt: String? = null): String {
         val apiKey = BuildConfig.GEMINI_API_KEY
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            Log.e(TAG, "Gemini API Key is placeholder. Triggering intelligent local helper fallback.")
-            return getSimulatedAiResponse(prompt)
+            Log.e(TAG, "Gemini API Key is placeholder.")
+            return "I am LoopDJ, your Gemini-powered music assistant! To activate real-time AI recommendations and smart chatting, please configure a valid GEMINI_API_KEY in the Secrets panel."
         }
 
         val request = GeminiRequest(
@@ -92,43 +91,10 @@ object GeminiClient {
         return try {
             val response = apiService.generateContent(apiKey, request)
             response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                ?: "I'm grooving to this beat too! What should we play next?"
+                ?: "I'm here! What should we play next? Add tracks to the collaborative queue."
         } catch (e: Exception) {
-            Log.e(TAG, "Gemini API call error: ${e.localizedMessage}. Triggering local database fallback.")
-            getSimulatedAiResponse(prompt)
-        }
-    }
-
-    /**
-     * Dynamic local simulated response matching the musical theme when the API key is not active.
-     */
-    private fun getSimulatedAiResponse(prompt: String): String {
-        val lowercasePrompt = prompt.lowercase()
-        return when {
-            lowercasePrompt.contains("recommend") || lowercasePrompt.contains("playlist") || lowercasePrompt.contains("suggest") -> {
-                listOf(
-                    "🎵 Here are some recommended tracks for your mood:\n- 'Blinding Lights' by The Weeknd\n- 'Starboy' by The Weeknd ft. Daft Punk\n- 'Levitating' by Dua Lipa\n- 'Nightcall' by Kavinsky (Synthwave vibe)",
-                    "🔥 Add these hits to your collaborative queue:\n- 'Stay' by Kid LAROI & Justin Bieber\n- 'Take On Me' by a-ha\n- 'As It Was' by Harry Styles\nWant me to queue one of these?",
-                    "💿 Vibe recommendations:\n- 'Intro' by The xx\n- 'Strobe' by deadmau5\n- 'Midnight City' by M83\nPerfect ambient tunes for a chill listening party!"
-                ).random()
-            }
-            lowercasePrompt.contains("hello") || lowercasePrompt.contains("hey") || lowercasePrompt.contains("hi") -> {
-                "👋 Hey Loopers! I am LoopDJ, your Gemini-powered music assistant. Request a genre, song suggestion, or ask me about music history!"
-            }
-            lowercasePrompt.contains("skip") || lowercasePrompt.contains("vote") -> {
-                "🗳️ Did you know? You can vote to skip tracks in the queue panel. If more than 50% of active members agree, we immediately skip to the next track!"
-            }
-            lowercasePrompt.contains("queue") -> {
-                "📝 You can search for any song from the Search section and tap '+' to append it to our collaborative room queue!"
-            }
-            else -> {
-                listOf(
-                    "🎵 Keep the beat rolling! LoopTogether is all about synchronization. Tap play/pause anytime to coordinate the room.",
-                    "⚡ Fun music fact: Listening to music releases dopamine which enhances spatial and collaboration performance in synchronized rooms!",
-                    "🎸 This room's energy level is off the charts. What track are you feeling right now?",
-                    "🔊 Pro-Tip: Transfer room ownership or lock playback from room controls if you are the host!"
-                ).random()
-            }
+            Log.e(TAG, "Gemini API call error: ${e.localizedMessage}")
+            "Error contacting Gemini AI: ${e.localizedMessage}. Check connection."
         }
     }
 }

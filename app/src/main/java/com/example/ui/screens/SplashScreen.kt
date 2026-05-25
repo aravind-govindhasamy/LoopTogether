@@ -51,7 +51,9 @@ fun SplashScreen(viewModel: LoopTogetherViewModel) {
         )
         // Hold on splash for 2.2 seconds before moving
         delay(2200)
-        if (viewModel.currentUser.value != null) {
+        if (!viewModel.onboardingCompleted.value) {
+            viewModel.navigateTo("onboarding")
+        } else if (viewModel.currentUser.value != null) {
             viewModel.navigateTo("home")
         } else {
             viewModel.navigateTo("login")

@@ -25,8 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.RoomEntity
 import com.example.data.SongSearchModel
-import com.example.ui.components.GlowCard
-import com.example.ui.components.GlassSurface
+import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.viewmodel.LoopTogetherViewModel
 import kotlinx.coroutines.launch
@@ -250,14 +249,16 @@ fun HomeScreen(viewModel: LoopTogetherViewModel) {
                             colors = CardDefaults.cardColors(containerColor = TranslucentGlassCard),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("No Active Rooms", color = Color.White, fontWeight = FontWeight.SemiBold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("Launch your own custom listening party or checkout the public lists!", color = TextSubdued, fontSize = 11.sp)
-                            }
+                            EmptyStateView(
+                                icon = Icons.Default.MusicNote,
+                                title = "No Active Listening Broadcasts",
+                                description = "There are no live active listening tunnels right now. Connect your frequencies or spark your own streaming party!",
+                                actionText = "Host Custom Party",
+                                color = NeonPurple,
+                                onActionClick = {
+                                    viewModel.hostNewRoom("Midnight Vibing Tunnel", "Cozy custom tunnel space", true)
+                                }
+                            )
                         }
                     }
                 } else {
