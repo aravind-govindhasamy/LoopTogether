@@ -192,6 +192,121 @@ fun ProfileScreen(viewModel: LoopTogetherViewModel) {
                 }
             }
 
+            // Music Identity & Compatibility Engine (Phase 13)
+            item {
+                Text(
+                    text = "Music Identity & Compatibility Dashboard 📡",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp)),
+                    colors = CardDefaults.cardColors(containerColor = DarkSpaceSurface)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Your Synced Compatibility Index", fontSize = 12.sp, color = TextSubdued, fontWeight = FontWeight.Bold)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(NeonPurple.copy(alpha = 0.15f))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("96% DYNAMIC SYNC", fontSize = 8.sp, color = NeonPurple, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Text(
+                            text = "You are mathematically aligned with 84% of your local listen loop orbits. Your strongest compatibility anchors are Synthwave & Cozy Lofi, matching late-night listening trends.",
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            lineHeight = 15.sp
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        Text("DYNAMICAL TASTE SPECTRUM", fontSize = 10.sp, color = TextSubdued, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Custom level / percentage bar for genres
+                        listOf(
+                            Pair("Synthwave / Outrun 🏎️", 0.95f),
+                            Pair("Cozy Sunset Lofi 🌇", 0.88f),
+                            Pair("Atmospheric Ambient 🌌", 0.72f)
+                        ).forEach { gstate ->
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(gstate.first, fontSize = 11.sp, color = Color.White)
+                                    Text("${(gstate.second * 100).toInt()}%", fontSize = 11.sp, color = NeonBlue, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(Color.White.copy(alpha = 0.05f))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(gstate.second)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(Brush.horizontalGradient(listOf(NeonPurple, NeonBlue)))
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("COSMIC AURA DYNAMIC SCHEME", fontSize = 10.sp, color = TextSubdued, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            listOf(
+                                Triple("Cyber Slate", NeonBlue, 0x112233),
+                                Triple("Prism Glow", HotPink, 0x441133),
+                                Triple("Cozy Forest", ActiveGreen, 0x113322)
+                            ).forEach { cl ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(cl.second.copy(alpha = 0.15f))
+                                        .border(1.dp, cl.second.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            Toast.makeText(context, "Aura mapped successfully to: ${cl.first}!", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(cl.first, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Interactive Editor Section
             item {
                 Text(

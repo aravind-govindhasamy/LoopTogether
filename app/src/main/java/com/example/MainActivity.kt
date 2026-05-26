@@ -35,7 +35,8 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.NeonBlue
 import com.example.ui.theme.NeonPurple
 import com.example.ui.theme.TextSubdued
-import com.example.ui.theme.TranslucentSystemDrawer
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import com.example.viewmodel.LoopTogetherViewModel
 
 class MainActivity : ComponentActivity() {
@@ -43,9 +44,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
-                val viewModel: LoopTogetherViewModel = viewModel()
+            val viewModel: LoopTogetherViewModel = viewModel()
+            val activeTheme by viewModel.appTheme.collectAsState()
+            val activeRoom by viewModel.activeRoom.collectAsState()
+            val songTitle = activeRoom?.currentSongTitle ?: ""
+
+            MyApplicationTheme(theme = activeTheme, songTitle = songTitle) {
                 val currentScreen by viewModel.currentScreen.collectAsState()
+                val loopColors = com.example.ui.theme.LocalLoopColors.current
 
                 // List of screens where standard bottom navigation bar is active
                 val showBottomBar = currentScreen in listOf("home", "explore", "profile")
@@ -54,59 +60,145 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     bottomBar = {
                         if (showBottomBar) {
-                            NavigationBar(
-                                containerColor = TranslucentSystemDrawer,
-                                tonalElevation = 8.dp
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp)
+                                    .padding(bottom = 12.dp)
+                                    .navigationBarsPadding(),
+                                contentAlignment = Alignment.Center
                             ) {
-                                // Home navigation button
-                                NavigationBarItem(
-                                    selected = currentScreen == "home",
-                                    onClick = { viewModel.navigateTo("home") },
-                                    icon = { Icon(Icons.Default.Home, contentDescription = "Home Hub") },
-                                    label = { Text("Home", fontSize = 10.sp) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = NeonBlue,
-                                        selectedTextColor = NeonBlue,
-                                        indicatorColor = NeonPurple.copy(alpha = 0.2f),
-                                        unselectedIconColor = TextSubdued,
-                                        unselectedTextColor = TextSubdued
-                                    )
-                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(32.dp))
+                                        .background(loopColors.background.copy(alpha = 0.85f))
+                                        .border(
+                                            1.dp,
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    loopColors.primary.copy(alpha = 0.25f),
+                                                    loopColors.secondary.copy(alpha = 0.15f)
+                                                )
+                                            ),
+                                            RoundedCornerShape(32.dp)
+                                        )
+                                        .padding(vertical = 6.dp, horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.SpaceAround,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Custom beautifully animated home navigation button
+                                    val isHome = currentScreen == "home"
+                                    val homeScale by animateFloatAsState(if (isHome) 1.12f else 1.0f, label = "home_scale")
+                                    Column(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .clickable { viewModel.navigateTo("home") }
+                                            .padding(vertical = 6.dp, horizontal = 12.dp)
+                                            .graphicsLayer(scaleX = homeScale, scaleY = homeScale),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (isHome) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .clip(CircleShape)
+                                                        .background(loopColors.primary.copy(alpha = 0.15f))
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.Home,
+                                                contentDescription = "Home Hub",
+                                                tint = if (isHome) loopColors.primary else loopColors.textSubdued,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            "Home",
+                                            fontSize = 9.sp,
+                                            fontWeight = if (isHome) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isHome) loopColors.primary else loopColors.textSubdued
+                                        )
+                                    }
 
-                                // Search/Explore navigation button
-                                NavigationBarItem(
-                                    selected = currentScreen == "explore",
-                                    onClick = { viewModel.navigateTo("explore") },
-                                    icon = { Icon(Icons.Default.Search, contentDescription = "Search & Explore") },
-                                    label = { Text("Search", fontSize = 10.sp) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = NeonBlue,
-                                        selectedTextColor = NeonBlue,
-                                        indicatorColor = NeonPurple.copy(alpha = 0.2f),
-                                        unselectedIconColor = TextSubdued,
-                                        unselectedTextColor = TextSubdued
-                                    )
-                                )
+                                    // Search/Explore navigation button
+                                    val isExplore = currentScreen == "explore"
+                                    val exploreScale by animateFloatAsState(if (isExplore) 1.12f else 1.0f, label = "exp_scale")
+                                    Column(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .clickable { viewModel.navigateTo("explore") }
+                                            .padding(vertical = 6.dp, horizontal = 12.dp)
+                                            .graphicsLayer(scaleX = exploreScale, scaleY = exploreScale),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (isExplore) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .clip(CircleShape)
+                                                        .background(loopColors.primary.copy(alpha = 0.15f))
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.Search,
+                                                contentDescription = "Search Catalogue",
+                                                tint = if (isExplore) loopColors.primary else loopColors.textSubdued,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            "Search",
+                                            fontSize = 9.sp,
+                                            fontWeight = if (isExplore) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isExplore) loopColors.primary else loopColors.textSubdued
+                                        )
+                                    }
 
-                                // User parameters / profile details button
-                                NavigationBarItem(
-                                    selected = currentScreen == "profile",
-                                    onClick = { viewModel.navigateTo("profile") },
-                                    icon = { Icon(Icons.Default.Person, contentDescription = "Personal Profile") },
-                                    label = { Text("Profile", fontSize = 10.sp) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = NeonBlue,
-                                        selectedTextColor = NeonBlue,
-                                        indicatorColor = NeonPurple.copy(alpha = 0.2f),
-                                        unselectedIconColor = TextSubdued,
-                                        unselectedTextColor = TextSubdued
-                                    )
-                                )
+                                    // Profile navigation button
+                                    val isProfile = currentScreen == "profile"
+                                    val profileScale by animateFloatAsState(if (isProfile) 1.12f else 1.0f, label = "prof_scale")
+                                    Column(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .clickable { viewModel.navigateTo("profile") }
+                                            .padding(vertical = 6.dp, horizontal = 12.dp)
+                                            .graphicsLayer(scaleX = profileScale, scaleY = profileScale),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (isProfile) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .clip(CircleShape)
+                                                        .background(loopColors.primary.copy(alpha = 0.15f))
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.Person,
+                                                contentDescription = "Personal Profile",
+                                                tint = if (isProfile) loopColors.primary else loopColors.textSubdued,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            "Profile",
+                                            fontSize = 9.sp,
+                                            fontWeight = if (isProfile) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isProfile) loopColors.primary else loopColors.textSubdued
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 ) { innerPadding ->
-                    val activeRoom by viewModel.activeRoom.collectAsState()
                     val showMiniPlayer = activeRoom != null && currentScreen in listOf("home", "explore", "profile")
 
                     // Slow rotation for mini-player artwork
@@ -169,15 +261,15 @@ class MainActivity : ComponentActivity() {
                                             1.dp,
                                             Brush.horizontalGradient(
                                                 listOf(
-                                                    NeonPurple.copy(alpha = 0.3f),
-                                                    NeonBlue.copy(alpha = 0.3f)
+                                                    loopColors.primary.copy(alpha = 0.4f),
+                                                    loopColors.secondary.copy(alpha = 0.4f)
                                                 )
                                             ),
                                             RoundedCornerShape(32.dp)
                                         )
                                         .clickable { viewModel.navigateTo("room") },
                                     shape = RoundedCornerShape(32.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xF209090E))
+                                    colors = CardDefaults.cardColors(containerColor = loopColors.background.copy(alpha = 0.92f))
                                 ) {
                                     Row(
                                         modifier = Modifier
@@ -190,7 +282,7 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier
                                                 .size(48.dp)
                                                 .clip(RoundedCornerShape(24.dp))
-                                                .border(1.5.dp, NeonBlue, RoundedCornerShape(24.dp))
+                                                .border(1.5.dp, loopColors.secondary, RoundedCornerShape(24.dp))
                                         ) {
                                             coil.compose.AsyncImage(
                                                 model = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=150&auto=format&fit=crop",
@@ -206,8 +298,8 @@ class MainActivity : ComponentActivity() {
                                                     .size(10.dp)
                                                     .align(androidx.compose.ui.Alignment.Center)
                                                     .clip(RoundedCornerShape(5.dp))
-                                                    .background(Color(0xFF020205))
-                                                    .border(1.dp, NeonBlue, RoundedCornerShape(5.dp))
+                                                    .background(loopColors.background)
+                                                    .border(1.dp, loopColors.secondary, RoundedCornerShape(5.dp))
                                             )
                                         }
 
@@ -219,7 +311,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             Text(
                                                 text = room.currentSongTitle,
-                                                color = Color.White,
+                                                color = loopColors.textPrimary,
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 maxLines = 1
@@ -236,7 +328,7 @@ class MainActivity : ComponentActivity() {
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
                                                     text = "${room.currentSongArtist} • Dynamic Tunnel",
-                                                    color = TextSubdued,
+                                                    color = loopColors.textSubdued,
                                                     fontSize = 11.sp,
                                                     maxLines = 1
                                                 )
@@ -251,14 +343,14 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier
                                                 .size(38.dp)
                                                 .background(
-                                                    Brush.linearGradient(listOf(NeonPurple, NeonBlue)),
+                                                    Brush.linearGradient(listOf(loopColors.primary, loopColors.secondary)),
                                                     RoundedCornerShape(19.dp)
                                                 )
                                         ) {
                                             Icon(
                                                 imageVector = if (room.isPlaying) androidx.compose.material.icons.Icons.Default.Pause else androidx.compose.material.icons.Icons.Default.PlayArrow,
                                                 contentDescription = "Playback Control",
-                                                tint = Color.White,
+                                                tint = if (loopColors.isDark) Color.White else loopColors.background,
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }

@@ -64,6 +64,33 @@ module.exports = function(io, socket, rooms) {
     console.log(`[Playback] Video seeked in Room ${roomId} to ${room.currentPlaybackPosition}ms`);
   });
 
+  // Force play active video immediately (bypassing queue or initiating stream)
+  socket.on('force_play_video', (data) => {
+    const { roomId, videoId, title, artist, duration } = data;
+    const room = rooms[roomId];
+    if (!room) return;
+
+    room.currentSongId = videoId;
+    room.currentSongTitle = title;
+    room.currentSongArtist = artist || "Unknown Artist";
+    room.currentSongDuration = duration || 180000;
+    room.currentPlaybackPosition = 0;
+    room.isPlaying = true;
+    room.lastUpdated = Date.now();
+
+    io.to(roomId).emit('sync_state', {
+      currentSongId: room.currentSongId,
+      currentSongTitle: room.currentSongTitle,
+      currentSongArtist: room.currentSongArtist,
+      currentSongDuration: room.currentSongDuration,
+      currentPlaybackPosition: room.currentPlaybackPosition,
+      isPlaying: room.isPlaying,
+      lastUpdated: room.lastUpdated
+    });
+
+    console.log(`[Playback] Force play song in Room ${roomId}: "${title}" (${videoId})`);
+  });
+
   // Full synchronize tick state comparison
   socket.on('sync_request', (data) => {
     const { roomId, userId, localDuration, localIsPlaying } = data;

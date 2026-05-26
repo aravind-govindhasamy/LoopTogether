@@ -35,44 +35,68 @@ import kotlin.random.Random
 
 import androidx.compose.ui.text.style.TextAlign
 
+import androidx.compose.ui.composed
+
 /**
- * Majestic resolution-independent ambient space background with top-left purple
- * and bottom-right blue glowing blurs, exactly replicating the Frosted Glass design theme.
+ * Majestic resolution-independent dynamic ambient background with top-left
+ * and bottom-right glowing blurs, exactly synchronized with the current handcrafted theme colors.
  */
-fun Modifier.frostedGlassBackground(): Modifier = this.then(
-    Modifier.drawBehind {
-        // Step 1: Deep velvet black solid base color
-        drawRect(color = Color(0xFF020205))
+fun Modifier.frostedGlassBackground(): Modifier = this.composed {
+    val colors = LocalLoopColors.current
+    val infiniteTransition = rememberInfiniteTransition(label = "ambient_bg")
 
-        // Step 2: Animated/Subtle Top-Left glowing purple spot
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color(0x26A855F7), // Purple-500 @ 15% opacity
-                    Color.Transparent
-                ),
-                center = Offset(size.width * -0.05f, size.height * -0.05f),
-                radius = size.width * 1.0f
-            ),
-            radius = size.width * 1.0f,
-            center = Offset(size.width * -0.05f, size.height * -0.05f)
-        )
+    // Slow drift of glowing background orbs
+    val glowOffset1X by infiniteTransition.animateFloat(
+        initialValue = -80f,
+        targetValue = 80f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(14000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow_offset_1x"
+    )
+    val glowOffset2Y by infiniteTransition.animateFloat(
+        initialValue = 80f,
+        targetValue = -80f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(19000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow_offset_2y"
+    )
 
-        // Step 3: Subtle Bottom-Right glowing blue spot
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color(0x263B82F6), // Blue-500 @ 15% opacity
-                    Color.Transparent
-                ),
-                center = Offset(size.width * 1.05f, size.height * 1.05f),
-                radius = size.width * 1.0f
-            ),
-            radius = size.width * 1.0f,
-            center = Offset(size.width * 1.05f, size.height * 1.05f)
-        )
-    }
-)
+    this.then(
+        Modifier.drawBehind {
+            // Fill deep theme-specific backdrop
+            drawRect(color = colors.background)
+
+            // Draw primary beautiful gradient glow
+            if (colors.glowColors.isNotEmpty()) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(colors.glowColors[0], Color.Transparent),
+                        center = Offset(size.width * -0.1f + glowOffset1X, size.height * -0.1f),
+                        radius = size.width * 1.2f
+                    ),
+                    radius = size.width * 1.2f,
+                    center = Offset(size.width * -0.1f + glowOffset1X, size.height * -0.1f)
+                )
+
+                if (colors.glowColors.size > 1) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(colors.glowColors[1], Color.Transparent),
+                            center = Offset(size.width * 1.1f, size.height * 1.1f + glowOffset2Y),
+                            radius = size.width * 1.2f
+                        ),
+                        radius = size.width * 1.2f,
+                        center = Offset(size.width * 1.1f, size.height * 1.1f + glowOffset2Y)
+                    )
+                }
+            }
+        }
+    )
+}
 
 /**
  * Translucent Glassmorphism Card Container with elegant frosted glass borders.
@@ -80,41 +104,43 @@ fun Modifier.frostedGlassBackground(): Modifier = this.then(
 @Composable
 fun GlowCard(
     modifier: Modifier = Modifier,
-    borderColor: Color = Color.White,
+    borderColor: Color? = null,
     hasGlow: Boolean = true,
     shape: RoundedCornerShape = RoundedCornerShape(24.dp), // 24dp matches rounded-3xl beautifully
     content: @Composable ColumnScope.() -> Unit
 ) {
-    // Beautiful glassy border resembling border-white/10 to border-white/20
+    val colors = LocalLoopColors.current
+    val actualBorder = borderColor ?: colors.primary.copy(alpha = 0.35f)
+
+    // Beautiful dynamic glassy border
     val borderBrush = Brush.linearGradient(
         colors = listOf(
-            Color.White.copy(alpha = 0.2f),
-            Color.White.copy(alpha = 0.05f)
+            actualBorder.copy(alpha = 0.25f),
+            colors.textSubdued.copy(alpha = 0.04f)
         )
     )
 
-    // A subtle accent halo behind the card to create depth if highlighted/hasGlow
     val shadowModifier = if (hasGlow) {
         Modifier.shadow(
-            elevation = 12.dp,
+            elevation = 8.dp,
             shape = shape,
-            ambientColor = borderColor.copy(alpha = 0.4f),
-            spotColor = borderColor.copy(alpha = 0.4f)
+            ambientColor = actualBorder.copy(alpha = 0.15f),
+            spotColor = actualBorder.copy(alpha = 0.15f)
         )
     } else Modifier
+
+    // Base card color with slight transparency
+    val cardBackground = if (colors.isDark) {
+        colors.surface.copy(alpha = 0.85f)
+    } else {
+        colors.surface.copy(alpha = 0.95f)
+    }
 
     Column(
         modifier = modifier
             .then(shadowModifier)
             .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0x24FFFFFF), // Frosted glassy top-half glare (White @ 14%)
-                        Color(0x0EFFFFFF)  // Lower-half deep matte (White @ 5%)
-                    )
-                )
-            )
+            .background(cardBackground)
             .border(1.dp, borderBrush, shape)
             .padding(18.dp),
         content = content
@@ -129,24 +155,24 @@ fun GlassSurface(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val colors = LocalLoopColors.current
     val glassShape = RoundedCornerShape(24.dp)
+    val cardBackground = if (colors.isDark) {
+        colors.surface.copy(alpha = 0.72f)
+    } else {
+        colors.surface.copy(alpha = 0.90f)
+    }
+
     Box(
         modifier = modifier
             .clip(glassShape)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0x1AFFFFFF), // Frosted white at 10%
-                        Color(0x0AFFFFFF)  // White at 4%
-                    )
-                )
-            )
+            .background(cardBackground)
             .border(
                 1.dp,
                 Brush.horizontalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.15f),
-                        Color.White.copy(alpha = 0.05f)
+                        colors.primary.copy(alpha = 0.2f),
+                        colors.textSubdued.copy(alpha = 0.05f)
                     )
                 ),
                 glassShape
@@ -157,22 +183,25 @@ fun GlassSurface(
 }
 
 /**
- * Glowing neon text displaying modern cyberpunk headers.
+ * Glowing primary title text.
  */
 @Composable
 fun NeonTitle(
     text: String,
     modifier: Modifier = Modifier,
     fontSize: Float = 24f,
-    glowColor: Color = NeonPurple
+    glowColor: Color? = null
 ) {
+    val colors = LocalLoopColors.current
+    val actualGlow = glowColor ?: colors.primary
+
     Text(
         text = text,
-        color = Color.White,
+        color = colors.textPrimary,
         fontSize = fontSize.sp,
         fontWeight = FontWeight.Bold,
         modifier = modifier.drawBehind {
-            // Draws secondary subtle text blur or glow shadow base
+            // If in dark mode, draw elegant soft volumetric accent shadow behind characters
         }
     )
 }
@@ -236,7 +265,9 @@ data class EmojiParticle(
     val startX: Float,
     val targetY: Float,
     val durationScale: Float,
-    val rotation: Float
+    val rotation: Float,
+    val isBurstChild: Boolean = false,
+    val driftX: Float = 0f
 )
 
 @Composable
@@ -250,21 +281,55 @@ fun FloatingEmojiCanvas(
     // Collect and spawn reactions
     LaunchedEffect(reactionsFlow) {
         reactionsFlow.collect { emoji ->
-            val randomId = UUID().toString()
+            val randomId = UUID()
+            val baseStartX = Random.nextFloat() // Percent width 0f to 1f
+            
             val newParticle = EmojiParticle(
                 id = randomId,
                 emoji = emoji,
-                startX = Random.nextFloat(), // Percent width 0f to 1f
-                targetY = Random.nextFloat() * -300f - 100f, // Go up negative coords
-                durationScale = Random.nextFloat() * 0.5f + 0.8f, // Speed scale
-                rotation = Random.nextFloat() * 60f - 30f // Random tilt
+                startX = baseStartX,
+                targetY = Random.nextFloat() * -350f - 150f, // Go up negative coords
+                durationScale = Random.nextFloat() * 0.4f + 0.9f, // Speed scale
+                rotation = Random.nextFloat() * 60f - 30f, // Random tilt
+                isBurstChild = false,
+                driftX = 0f
             )
-            particles = particles + newParticle
+            
+            // Generate a burst of micro child particles if high-intensity emoji is launched
+            val isIntense = emoji == "🔥" || emoji == "⚡" || emoji == "👾" || emoji == "💖"
+            val burstList = if (isIntense) {
+                listOf(
+                    EmojiParticle(
+                        id = "$randomId-b1",
+                        emoji = emoji,
+                        startX = baseStartX,
+                        targetY = (Random.nextFloat() * -200f - 100f),
+                        durationScale = 0.7f,
+                        rotation = -45f,
+                        isBurstChild = true,
+                        driftX = -60f
+                    ),
+                    EmojiParticle(
+                        id = "$randomId-b2",
+                        emoji = emoji,
+                        startX = baseStartX,
+                        targetY = (Random.nextFloat() * -200f - 100f),
+                        durationScale = 0.7f,
+                        rotation = 45f,
+                        isBurstChild = true,
+                        driftX = 60f
+                    )
+                )
+            } else {
+                emptyList()
+            }
 
-            // Cleanup particle after animation completed
+            particles = particles + newParticle + burstList
+
+            // Cleanup particle and children after animation completed
             scope.launch {
-                delay(2000)
-                particles = particles.filter { it.id != randomId }
+                delay(2200)
+                particles = particles.filter { it.id != randomId && !it.id.startsWith(randomId) }
             }
         }
     }
@@ -288,23 +353,32 @@ fun FloatingEmojiCanvas(
                         .fillMaxSize()
                         .padding(horizontal = 30.dp)
                 ) {
+                    // Compute dynamic sway and side drifts
+                    val mathProgress = animProgress.value
+                    // Beat-synced visual wobble wobble based on harmonic sine
+                    val harmonicSway = if (!particle.isBurstChild) {
+                        kotlin.math.sin(mathProgress * Math.PI.toFloat() * 5f) * 20f
+                    } else {
+                        mathProgress * particle.driftX
+                    }
+
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .offset(
-                                x = (particle.startX * 250).dp,
-                                y = (animProgress.value * particle.targetY).dp
+                                x = (particle.startX * 250).dp + harmonicSway.dp,
+                                y = (mathProgress * particle.targetY).dp
                             )
                             .graphicsLayer(
-                                alpha = 1f - animProgress.value,
-                                scaleX = animProgress.value * 0.8f + 0.4f,
-                                scaleY = animProgress.value * 0.8f + 0.4f,
-                                rotationZ = particle.rotation
+                                alpha = 1f - mathProgress,
+                                scaleX = mathProgress * 0.9f + 0.4f,
+                                scaleY = mathProgress * 0.9f + 0.4f,
+                                rotationZ = particle.rotation + (mathProgress * 90f)
                             )
                     ) {
                         Text(
                             text = particle.emoji,
-                            fontSize = 32.sp,
+                            fontSize = if (particle.isBurstChild) 18.sp else 34.sp,
                             color = Color.White
                         )
                     }

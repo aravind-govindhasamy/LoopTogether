@@ -93,12 +93,297 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
     val friendActivityAlertsEnabled = MutableStateFlow(true)
     val roomInvitesEnabled = MutableStateFlow(true)
     val cosmicMidnightTheme = MutableStateFlow(true)
-    val accentColorIndex = MutableStateFlow("purple") // purple, blue, pink
+    val appTheme = MutableStateFlow(com.example.ui.theme.LoopTheme.MIDNIGHT_PULSE)
+    val motionIntensity = MutableStateFlow(1f) // multiplier for speed/activity
+    val blurIntensity = MutableStateFlow(16f) // pixel rating for visual blurs
+    val ambientEffectsToggle = MutableStateFlow(true) // floating particles and glow
+    val accentColorIndex = MutableStateFlow("purple") // purple, blue, pink, cyan, emerald, rose, orange, indigo
     val reducedMotionEnabled = MutableStateFlow(false)
     val blockedUsers = MutableStateFlow<List<String>>(emptyList())
     val profileVisibility = MutableStateFlow("Public") // Public, Friends Only, Private
     val showActivityStatus = MutableStateFlow(true)
     val onboardingCompleted = MutableStateFlow(false)
+
+    // --- ADVANCED SOCIAL GRAPH STATES (PHASE 13) ---
+    val userBio = MutableStateFlow("Synthesia explorer. Late-night synthwave and lofi loops guide my audio orbits.")
+    val listeningStreak = MutableStateFlow(12) // listening streak in days
+    val topArtistsCode = MutableStateFlow(listOf("The Midnight", "Kavinsky", "FM-84", "Home"))
+    val favoriteGenreTags = MutableStateFlow(listOf("Synthwave ⚡", "Lofi Sunset 🌆", "Liquidity DnB 🌊", "Unplugged 🎸"))
+
+    private val _friends = MutableStateFlow<List<FriendModel>>(
+        listOf(
+            FriendModel(
+                id = "f1",
+                username = "RetroSonic 🕶️",
+                profilePicUrl = "⚡",
+                isOnline = true,
+                statusType = "Online",
+                statusText = "Syncing Retro Vibes",
+                currentlyListening = "Resonance - HOME 🌅",
+                activeRoomId = "VIBE-99",
+                activeRoomName = "Retro Future Synth Lounge",
+                isFavorite = true,
+                isCloseFriend = true,
+                notes = "Met in synthwave release lounge. Awesome music taste!",
+                recentlyPlayedWith = listOf("Resonance", "Sunset Drive"),
+                compatibility = 94,
+                favoriteGenres = listOf("Synthwave ⚡", "Outrun 🌌")
+            ),
+            FriendModel(
+                id = "f2",
+                username = "Sarah_Sunset 🌸",
+                profilePicUrl = "🦊",
+                isOnline = true,
+                statusType = "Idle",
+                statusText = "Cozy sunset lofi vibes",
+                currentlyListening = "We're Finally Landing - HOME ☕",
+                activeRoomId = "LOFI-88",
+                activeRoomName = "Warm Lofi Cafe",
+                isFavorite = true,
+                isCloseFriend = false,
+                notes = "Frequent late-night listener. Co-hosted 3 lounges.",
+                recentlyPlayedWith = listOf("Keep Going", "Stardust"),
+                compatibility = 88,
+                favoriteGenres = listOf("Lofi Sunset 🌆", "Chillwave 🌊")
+            ),
+            FriendModel(
+                id = "f3",
+                username = "WaveRider 🌌",
+                profilePicUrl = "👾",
+                isOnline = true,
+                statusType = "Away",
+                statusText = "AFK but looper active",
+                currentlyListening = "Neo Tokyo - Scandroid 🤖",
+                activeRoomId = null,
+                activeRoomName = null,
+                isFavorite = false,
+                isCloseFriend = true,
+                notes = "Sends outstanding playlist recommendation cards.",
+                recentlyPlayedWith = listOf("Neo Tokyo"),
+                compatibility = 76,
+                favoriteGenres = listOf("Cyberpunk 🤖", "Synthpop ⚡")
+            ),
+            FriendModel(
+                id = "f4",
+                username = "Elena_Sound 🎸",
+                profilePicUrl = "🎸",
+                isOnline = false,
+                statusType = "Offline",
+                statusText = "Offline • 3h ago",
+                currentlyListening = "",
+                activeRoomId = null,
+                activeRoomName = null,
+                isFavorite = false,
+                isCloseFriend = false,
+                notes = "Loves raw acoustic sessions.",
+                recentlyPlayedWith = listOf("Acoustic Sunset"),
+                compatibility = 65,
+                favoriteGenres = listOf("Unplugged 🎸", "Blues 🌊")
+            )
+        )
+    )
+    val friends: StateFlow<List<FriendModel>> = _friends.asStateFlow()
+
+    private val _friendRequests = MutableStateFlow<List<FriendRequestModel>>(
+        listOf(
+            FriendRequestModel("req_1", "CosmicDJ 🌠", "🌌"),
+            FriendRequestModel("req_2", "LofiPanda 🐼", "🎧")
+        )
+    )
+    val friendRequests: StateFlow<List<FriendRequestModel>> = _friendRequests.asStateFlow()
+
+    private val _scheduledEvents = MutableStateFlow<List<ListeningEventModel>>(
+        listOf(
+            ListeningEventModel(
+                id = "ev_1",
+                title = "Late-Night Synthwave Cruise 🌌",
+                description = "Cruising through nostalgic digital cities. Retrowave, future music, and interactive peer loops.",
+                hostUsername = "RetroSonic 🕶️",
+                startTime = System.currentTimeMillis() + 1800000,
+                countdownText = "Starts in 30m",
+                rsvpsCount = 42,
+                userRsvped = false,
+                genre = "Synthwave ⚡"
+            ),
+            ListeningEventModel(
+                id = "ev_2",
+                title = "Lofi Album Release Party ☕",
+                description = "Cozy listening session with exclusive artist commentary and real-time multiplayer reaction bursts.",
+                hostUsername = "Sarah_Sunset 🌸",
+                startTime = System.currentTimeMillis() + 7200000,
+                countdownText = "Starts in 2h",
+                rsvpsCount = 89,
+                userRsvped = true,
+                genre = "Lofi Sunset 🌆"
+            ),
+            ListeningEventModel(
+                id = "ev_3",
+                title = "Cyber Fusion Retro Lounge 🤖",
+                description = "Loud neon synthesizers and fast-paced virtual rhythms. Bring your custom queue additions!",
+                hostUsername = "WaveRider 🌌",
+                startTime = System.currentTimeMillis() + 86400000,
+                countdownText = "Tomorrow",
+                rsvpsCount = 14,
+                userRsvped = false,
+                genre = "Cyberpunk 🤖"
+            )
+        )
+    )
+    val scheduledEvents: StateFlow<List<ListeningEventModel>> = _scheduledEvents.asStateFlow()
+
+    private val _memoryMoments = MutableStateFlow<List<MemoryMomentModel>>(
+        listOf(
+            MemoryMomentModel(
+                title = "Late-Night Chill Sessions 🌛",
+                description = "Vibed together with Sarah_Sunset and RetroSonic for 240+ minutes on Lofi Sunset paths.",
+                icon = "🌙"
+            ),
+            MemoryMomentModel(
+                title = "Synchronic Release Spike 🌊",
+                description = "Listened to HOME - Resonance at the exact millisecond threshold with 4 Friends simultaneously.",
+                icon = "⚡"
+            ),
+            MemoryMomentModel(
+                title = "The Golden Playlist 🎵",
+                description = "Added 35 songs that were upvoted to the queue with RetroSonic 🕶️.",
+                icon = "🍯"
+            )
+        )
+    )
+    val memoryMoments: StateFlow<List<MemoryMomentModel>> = _memoryMoments.asStateFlow()
+
+    private val _achievements = MutableStateFlow<List<AchievementModel>>(
+        listOf(
+            AchievementModel("Night Owl Listener 🦉", "Vibe in rooms continuously after midnight", "🌙", true),
+            AchievementModel("Perfect Host 👑", "Launch a synchronized tunnel that has 5+ concurrent loopers", "💎", true),
+            AchievementModel("Music Explorer 🚀", "Upvote 25+ diverse song genres onto communal queues", "🌌", true),
+            AchievementModel("Community Favorite 💖", "Receive 50+ emoji reactions on your queued additions", "✨", false),
+            AchievementModel("Sync Symphony 🎼", "Shared and synced 100+ songs with friends", "🎵", false)
+        )
+    )
+    val achievements: StateFlow<List<AchievementModel>> = _achievements.asStateFlow()
+
+    fun respondToFriendRequest(reqId: String, accept: Boolean) {
+        val request = _friendRequests.value.find { it.id == reqId } ?: return
+        _friendRequests.value = _friendRequests.value.filter { it.id != reqId }
+        if (accept) {
+            val genres = listOf("Chillwave", "Synthpop", "House", "Deep Tech", "Jazz Beats")
+            val newFriend = FriendModel(
+                id = "friend_" + UUID.randomUUID().toString().take(6),
+                username = request.username,
+                profilePicUrl = request.profilePicUrl,
+                isOnline = true,
+                statusType = "Online",
+                statusText = "Just entered the orbit",
+                currentlyListening = "Syncing Up...",
+                compatibility = (70..99).random(),
+                favoriteGenres = listOf(genres.random(), "Lofi")
+            )
+            _friends.value = listOf(newFriend) + _friends.value
+            postActivityEvent("Added ${request.username} as friend! 🤝")
+            
+            // Add notification
+            viewModelScope.launch {
+                repository.insertNotification(
+                    NotificationEntity(
+                        title = "Friend Request Accepted 🤝",
+                        description = "You are now connected with ${request.username} in the Loopiverse!",
+                        type = "FRIEND"
+                    )
+                )
+            }
+        } else {
+            postActivityEvent("Declined friend request from ${request.username}.")
+        }
+    }
+
+    fun addFriend(username: String) {
+        val clean = username.trim()
+        if (clean.isBlank()) return
+        if (_friends.value.any { it.username.equals(clean, true) }) {
+            postActivityEvent("$clean is already in your Music Circle!")
+            return
+        }
+        val icons = listOf("🦊", "🦁", "🐨", "🐼", "🦄", "🦅")
+        val request = FriendRequestModel(
+            id = "req_" + UUID.randomUUID().toString().take(6),
+            username = clean,
+            profilePicUrl = icons.random()
+        )
+        _friends.value = _friends.value + FriendModel(
+            id = UUID.randomUUID().toString(),
+            username = clean,
+            profilePicUrl = request.profilePicUrl,
+            currentlyListening = "Exploring new bands...",
+            compatibility = (75..98).random(),
+            favoriteGenres = listOf("Synthwave ⚡", "Lofi Sunset 🌆")
+        )
+        postActivityEvent("Added $clean to your Music Circle! 🤝")
+    }
+
+    fun toggleFriendFavorite(friendId: String) {
+        _friends.value = _friends.value.map {
+            if (it.id == friendId) it.copy(isFavorite = !it.isFavorite) else it
+        }
+    }
+
+    fun toggleCloseFriend(friendId: String) {
+        _friends.value = _friends.value.map {
+            if (it.id == friendId) it.copy(isCloseFriend = !it.isCloseFriend) else it
+        }
+    }
+
+    fun updateFriendNote(friendId: String, note: String) {
+        _friends.value = _friends.value.map {
+            if (it.id == friendId) {
+                it.copy(notes = note)
+            } else it
+        }
+    }
+
+    fun toggleEventRsvp(eventId: String) {
+        _scheduledEvents.value = _scheduledEvents.value.map { ev ->
+            if (ev.id == eventId) {
+                val nextStatus = !ev.userRsvped
+                val diff = if (nextStatus) 1 else -1
+                val rsvpStateMsg = if (nextStatus) "RSVP Confirmed for ${ev.title}! 📅" else "RSVP Removed for ${ev.title}."
+                postActivityEvent(rsvpStateMsg)
+                
+                // Add notification
+                viewModelScope.launch {
+                    repository.insertNotification(
+                        NotificationEntity(
+                            title = if (nextStatus) "Event Scheduled Reminder 📅" else "RSVP Cancelled",
+                            description = "Your spot is ${if (nextStatus) "secured" else "released"} for ${ev.title}.",
+                            type = "SYSTEM"
+                        )
+                    )
+                }
+
+                ev.copy(userRsvped = nextStatus, rsvpsCount = ev.rsvpsCount + diff)
+            } else ev
+        }
+    }
+
+    fun sendQuickRoomInvite(friendId: String) {
+        val friendName = _friends.value.find { it.id == friendId }?.username ?: "Your Friend"
+        val activeRoomNameVal = activeRoom.value?.name ?: "Late Night Session"
+        postActivityEvent("One-tap invite dispatched to $friendName 🎵")
+        
+        viewModelScope.launch {
+            repository.insertNotification(
+                NotificationEntity(
+                    title = "Invite Sent to $friendName ✉️",
+                    description = "A waiting connection token for room \"$activeRoomNameVal\" was delivered.",
+                    type = "INVITE"
+                )
+            )
+        }
+    }
+
+    fun reportUserFlow(username: String) {
+        postActivityEvent("Report logged. Community guards will audit $username 🔒")
+    }
 
     fun blockUser(username: String) {
         if (username.isNotBlank() && !blockedUsers.value.contains(username)) {
@@ -476,6 +761,77 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
         )
     }
 
+    fun playSongNow(song: SongSearchModel) = viewModelScope.launch {
+        val user = _currentUser.value ?: return@launch
+        var roomId = _activeRoomId.value
+
+        if (roomId == null || roomId.isBlank()) {
+            val randomCode = generateRoomCode()
+            val roomName = "${user.username}'s Solo Lounge"
+            val room = repository.createRoom(
+                code = randomCode,
+                name = roomName,
+                description = "Standalone playback session & interactive node.",
+                hostId = user.id,
+                hostName = user.username,
+                isPublic = false
+            )
+            
+            // Connect socket and notify
+            socketService.connect()
+            val joinObj = org.json.JSONObject().apply {
+                put("roomId", room.id)
+                put("userId", user.id)
+                put("userName", user.username)
+                put("userAvatar", user.profilePicUrl)
+            }
+            socketService.emit("join_room", joinObj)
+            
+            roomId = room.id
+            _activeRoomId.value = roomId
+            startPlaybackSyncTicker()
+            startPeerSimulation()
+        }
+
+        val room = repository.getRoom(roomId) ?: return@launch
+        val updatedRoom = room.copy(
+            currentSongId = song.videoId,
+            currentSongTitle = song.title,
+            currentSongArtist = song.artist,
+            currentSongDuration = song.durationMs,
+            currentPlaybackPosition = 0,
+            isPlaying = true,
+            lastUpdated = System.currentTimeMillis()
+        )
+        repository.updateRoomSyncState(updatedRoom)
+
+        // Broadcast to sockets
+        val forcePlayObj = org.json.JSONObject().apply {
+            put("roomId", roomId)
+            put("videoId", song.videoId)
+            put("title", song.title)
+            put("artist", song.artist)
+            put("duration", song.durationMs)
+        }
+        socketService.emit("force_play_video", forcePlayObj)
+
+        postActivityEvent("${user.username} started playing '${song.title}' 🎧")
+        
+        // Also post systematic chat alert
+        repository.insertChatMessage(
+            ChatMessageEntity(
+                roomId = roomId,
+                userId = "SYSTEM",
+                userName = "System",
+                userAvatar = "📺",
+                content = "${user.username} changed stream focus: '${song.title}'. Sync alignment activated.",
+                isSystem = true
+            )
+        )
+
+        navigateTo("room")
+    }
+
     fun upvoteQueueItem(itemId: Int) = viewModelScope.launch {
         val roomId = _activeRoomId.value ?: return@launch
         val activeQueue = repository.getActiveQueue(roomId)
@@ -721,3 +1077,55 @@ class LoopTogetherViewModel(application: Application) : AndroidViewModel(applica
         simulationActivityJob?.cancel()
     }
 }
+
+// --- ADVANCED SOCIAL GRAPH DATA MODELS (PHASE 13) ---
+data class FriendModel(
+    val id: String,
+    val username: String,
+    val profilePicUrl: String,
+    val isOnline: Boolean = true,
+    val statusType: String = "Online", // "Online", "Idle", "Away", "Offline"
+    val statusText: String = "",
+    val currentlyListening: String = "",
+    val activeRoomId: String? = null,
+    val activeRoomName: String? = null,
+    val isFavorite: Boolean = false,
+    val isCloseFriend: Boolean = false,
+    val notes: String = "",
+    val recentlyPlayedWith: List<String> = emptyList(),
+    val compatibility: Int = 85,
+    val favoriteGenres: List<String> = listOf("Synthwave", "Lofi")
+)
+
+data class FriendRequestModel(
+    val id: String,
+    val username: String,
+    val profilePicUrl: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class ListeningEventModel(
+    val id: String,
+    val title: String,
+    val description: String,
+    val hostUsername: String,
+    val startTime: Long,
+    val countdownText: String = "",
+    val rsvpsCount: Int = 12,
+    val userRsvped: Boolean = false,
+    val genre: String = "Synthwave"
+)
+
+data class MemoryMomentModel(
+    val title: String,
+    val description: String,
+    val icon: String = "✨"
+)
+
+data class AchievementModel(
+    val title: String,
+    val description: String,
+    val icon: String,
+    val unlocked: Boolean = false
+)
+

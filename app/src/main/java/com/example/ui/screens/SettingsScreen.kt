@@ -33,6 +33,7 @@ import com.example.viewmodel.LoopTogetherViewModel
 fun SettingsScreen(viewModel: LoopTogetherViewModel) {
     val context = LocalContext.current
     val user by viewModel.currentUser.collectAsState()
+    val loopColors = com.example.ui.theme.LocalLoopColors.current
 
     // Retrieve state variables from ViewModel to keep them fully reactive!
     val latencyMs by viewModel.syncLatencyMs.collectAsState()
@@ -47,6 +48,10 @@ fun SettingsScreen(viewModel: LoopTogetherViewModel) {
     val invitesOn by viewModel.roomInvitesEnabled.collectAsState()
     
     val midnightThemeOn by viewModel.cosmicMidnightTheme.collectAsState()
+    val currentTheme by viewModel.appTheme.collectAsState()
+    val motionIntensity by viewModel.motionIntensity.collectAsState()
+    val blurIntensity by viewModel.blurIntensity.collectAsState()
+    val ambientEffectsToggle by viewModel.ambientEffectsToggle.collectAsState()
     val accentColorIndex by viewModel.accentColorIndex.collectAsState()
     val reducedMotionOn by viewModel.reducedMotionEnabled.collectAsState()
     
@@ -95,6 +100,128 @@ fun SettingsScreen(viewModel: LoopTogetherViewModel) {
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
+                }
+            }
+
+            // --- SECTION: REALTIME SYNC SERVER ---
+            item {
+                SettingsSectionHeader(title = "Realtime Sync Server")
+            }
+
+            item {
+                val socketService = viewModel.socketService
+                val connState by viewModel.socketConnectionState.collectAsState()
+                var serverHostInput by remember { mutableStateOf(socketService.getServerHostOnly()) }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
+                    colors = CardDefaults.cardColors(containerColor = DarkSpaceSurface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Socket Stream Status",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            
+                            val statusLabel: String
+                            val statusColor: Color
+                            when (connState) {
+                                com.example.data.ConnectionState.CONNECTED -> {
+                                    statusLabel = "CONNECTED ●"
+                                    statusColor = NeonBlue
+                                }
+                                com.example.data.ConnectionState.CONNECTING -> {
+                                    statusLabel = "CONNECTING..."
+                                    statusColor = NeonPurple
+                                }
+                                com.example.data.ConnectionState.LOCAL_SYNC -> {
+                                    statusLabel = "LOCAL IDEMPOTENT ●"
+                                    statusColor = HotPink
+                                }
+                                else -> {
+                                    statusLabel = "OFFLINE"
+                                    statusColor = Color.Red
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(statusColor.copy(alpha = 0.15f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = statusLabel,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = statusColor
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "To sync playlists, search live YouTube, and stream audio together with peers, connect to your workspace server node.",
+                            color = TextSubdued,
+                            fontSize = 11.sp
+                        )
+
+                        OutlinedTextField(
+                            value = serverHostInput,
+                            onValueChange = { serverHostInput = it },
+                            placeholder = { Text("e.g. 10.0.2.2:3000 or ais-dev-*.run.app", color = TextSubdued, fontSize = 12.sp) },
+                            singleLine = true,
+                            label = { Text("Server Host Address", color = NeonPurple, fontSize = 11.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = NeonBlue,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.12f)
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    socketService.updateServerAddress(serverHostInput)
+                                    Toast.makeText(context, "Re-connecting to $serverHostInput...", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonBlue),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Connect", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+
+                            Button(
+                                onClick = {
+                                    serverHostInput = "10.0.2.2:3000"
+                                    socketService.updateServerAddress("10.0.2.2:3000")
+                                    Toast.makeText(context, "Reset to standard local emulator port", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Reset Local", fontSize = 11.sp, color = Color.White)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -323,55 +450,221 @@ fun SettingsScreen(viewModel: LoopTogetherViewModel) {
 
             // --- SECTION: APPEARANCE ENGINE ---
             item {
-                SettingsSectionHeader(title = "Cosmic Theme & Appearance")
+                SettingsSectionHeader(title = "Handcrafted Visual Identity")
+            }
+
+            item {
+                Text(
+                    text = "Select Premium Themes",
+                    color = loopColors.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            item {
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(com.example.ui.theme.LoopTheme.values()) { themeOption ->
+                        val isSelected = currentTheme == themeOption
+                        val themeColorSample = when(themeOption) {
+                            com.example.ui.theme.LoopTheme.MIDNIGHT_PULSE -> com.example.ui.theme.MidnightPulseColors
+                            com.example.ui.theme.LoopTheme.SUNSET_VIBES -> com.example.ui.theme.SunsetVibesColors
+                            com.example.ui.theme.LoopTheme.AURORA -> com.example.ui.theme.AuroraColors
+                            com.example.ui.theme.LoopTheme.VELVET_DARK -> com.example.ui.theme.VelvetDarkColors
+                            com.example.ui.theme.LoopTheme.PURE_LIGHT -> com.example.ui.theme.PureLightColors
+                            com.example.ui.theme.LoopTheme.DYNAMIC_REACTIVE -> com.example.ui.theme.MidnightPulseColors.copy(primary = Color(0xFFEC4899), secondary = Color(0xFF22D3EE))
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .width(135.dp)
+                                .height(85.dp)
+                                .border(
+                                    width = if (isSelected) 2.5.dp else 1.dp,
+                                    brush = if (isSelected) {
+                                        Brush.linearGradient(listOf(themeColorSample.primary, themeColorSample.secondary))
+                                    } else {
+                                        Brush.linearGradient(listOf(loopColors.border, loopColors.border))
+                                    },
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .clickable {
+                                    viewModel.appTheme.value = themeOption
+                                    viewModel.cosmicMidnightTheme.value = (themeOption != com.example.ui.theme.LoopTheme.PURE_LIGHT)
+                                },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (themeOption == com.example.ui.theme.LoopTheme.PURE_LIGHT) Color(0xFFF1F5F9) else themeColorSample.background.copy(alpha = 0.95f)
+                            )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(12.dp),
+                                contentAlignment = Alignment.BottomStart
+                            ) {
+                                Row(
+                                    modifier = Modifier.align(Alignment.TopEnd),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(themeColorSample.primary))
+                                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(themeColorSample.secondary))
+                                }
+
+                                Text(
+                                    text = themeOption.displayName,
+                                    color = if (themeOption == com.example.ui.theme.LoopTheme.PURE_LIGHT) Color(0xFF1E293B) else Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             item {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp)),
-                    colors = CardDefaults.cardColors(containerColor = DarkSpaceSurface)
+                        .border(1.dp, loopColors.border, RoundedCornerShape(24.dp)),
+                    colors = CardDefaults.cardColors(containerColor = loopColors.surface)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        SettingsToggleRow(
-                            title = "Deep Cosmic Midnight Theme",
-                            subtitle = "Replaces classic dark with pure high-contrast velvet black",
-                            checked = midnightThemeOn,
-                            onCheckedChange = { viewModel.cosmicMidnightTheme.value = it }
-                        )
-
-                        Divider(color = Color.White.copy(alpha = 0.06f))
-
+                        // Personalize accents
                         Column {
-                            Text("System Core Glow Color Accent", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Adapt core cards, glowing rings, and button nodes", color = TextSubdued, fontSize = 10.sp)
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                AccentCircle(colorName = "purple", brush = Brush.sweepGradient(listOf(NeonPurple, NeonBlue, NeonPurple)), current = accentColorIndex) {
-                                    viewModel.accentColorIndex.value = "purple"
-                                }
-                                AccentCircle(colorName = "blue", brush = Brush.sweepGradient(listOf(NeonBlue, Color.Cyan, NeonBlue)), current = accentColorIndex) {
-                                    viewModel.accentColorIndex.value = "blue"
-                                }
-                                AccentCircle(colorName = "pink", brush = Brush.sweepGradient(listOf(HotPink, NeonPurple, HotPink)), current = accentColorIndex) {
-                                    viewModel.accentColorIndex.value = "pink"
+                            Text("Theme Color Accent", color = loopColors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("Personalizes specific functional indicators", color = loopColors.textSubdued, fontSize = 10.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                val accents = listOf(
+                                    "purple" to Color(0xFFA855F7),
+                                    "blue" to Color(0xFF3B82F6),
+                                    "pink" to Color(0xFFEC4899),
+                                    "cyan" to Color(0xFF22D3EE),
+                                    "emerald" to Color(0xFF10B981),
+                                    "rose" to Color(0xFFFDA4AF),
+                                    "orange" to Color(0xFFF97316),
+                                    "indigo" to Color(0xFF4F46E5)
+                                )
+                                accents.forEach { accent ->
+                                    val isPicked = accentColorIndex == accent.first
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(accent.second)
+                                            .border(
+                                                2.5.dp,
+                                                if (isPicked) loopColors.textPrimary else Color.Transparent,
+                                                CircleShape
+                                            )
+                                            .clickable {
+                                                viewModel.accentColorIndex.value = accent.first
+                                            }
+                                    )
                                 }
                             }
                         }
 
-                        Divider(color = Color.White.copy(alpha = 0.06f))
+                        Divider(color = loopColors.border.copy(alpha = 0.5f))
 
-                        SettingsToggleRow(
-                            title = "Reduced Motion Mode",
-                            subtitle = "Disables heavy rotations and complex wave canvases",
-                            checked = reducedMotionOn,
-                            onCheckedChange = { viewModel.reducedMotionEnabled.value = it }
-                        )
+                        // Ambient effects toggle row
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Aura Particles & Ambient Effects", color = loopColors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Enables floating star particles and reactive pulse orbits", color = loopColors.textSubdued, fontSize = 10.sp)
+                            }
+                            Switch(
+                                checked = ambientEffectsToggle,
+                                onCheckedChange = { viewModel.ambientEffectsToggle.value = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = loopColors.primary,
+                                    checkedTrackColor = loopColors.primary.copy(alpha = 0.3f)
+                                )
+                            )
+                        }
+
+                        Divider(color = loopColors.border.copy(alpha = 0.5f))
+
+                        // Motion Slider
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Motion Speed Intensity", color = loopColors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(String.format("%.1fx", motionIntensity), color = loopColors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("Speeds up background drift, canvas neons and equalizers", color = loopColors.textSubdued, fontSize = 10.sp)
+                            Slider(
+                                value = motionIntensity,
+                                onValueChange = { viewModel.motionIntensity.value = it },
+                                valueRange = 0f..2f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = loopColors.primary,
+                                    activeTrackColor = loopColors.primary.copy(alpha = 0.4f),
+                                    inactiveTrackColor = loopColors.textSubdued.copy(alpha = 0.2f)
+                                )
+                            )
+                        }
+
+                        Divider(color = loopColors.border.copy(alpha = 0.5f))
+
+                        // Blur Slider
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Glass Blur Intensity", color = loopColors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("${blurIntensity.toInt()} px", color = loopColors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("Deepness blur spacing of glassy background panels", color = loopColors.textSubdued, fontSize = 10.sp)
+                            Slider(
+                                value = blurIntensity,
+                                onValueChange = { viewModel.blurIntensity.value = it },
+                                valueRange = 0f..32f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = loopColors.primary,
+                                    activeTrackColor = loopColors.primary.copy(alpha = 0.4f),
+                                    inactiveTrackColor = loopColors.textSubdued.copy(alpha = 0.2f)
+                                )
+                            )
+                        }
+
+                        Divider(color = loopColors.border.copy(alpha = 0.5f))
+
+                        // Reduced Motion Mode Toggle
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Reduced Motion Mode", color = loopColors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Disables rotating canvases to prioritize battery life", color = loopColors.textSubdued, fontSize = 10.sp)
+                            }
+                            Switch(
+                                checked = reducedMotionOn,
+                                onCheckedChange = { viewModel.reducedMotionEnabled.value = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = loopColors.primary,
+                                    checkedTrackColor = loopColors.primary.copy(alpha = 0.3f)
+                                )
+                            )
+                        }
                     }
                 }
             }

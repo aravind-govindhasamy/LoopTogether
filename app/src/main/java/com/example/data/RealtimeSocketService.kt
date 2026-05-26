@@ -29,9 +29,11 @@ class RealtimeSocketService(
     private var webSocket: WebSocket? = null
     var activeRoomId: String = ""
     
+    private val prefs = context.getSharedPreferences("looptogether_prefs", Context.MODE_PRIVATE)
+    
     // Address of the Node.js backend. In Android emulator, 10.0.2.2 maps to host machine localhost
     // We can allow customizing it via settings
-    private var serverUrl = "ws://10.0.2.2:3000/socket.io/?EIO=4&transport=websocket"
+    private var serverUrl = prefs.getString("server_url", "ws://10.0.2.2:3000/socket.io/?EIO=4&transport=websocket") ?: "ws://10.0.2.2:3000/socket.io/?EIO=4&transport=websocket"
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState = _connectionState.asStateFlow()
@@ -55,7 +57,7 @@ class RealtimeSocketService(
     val serverSyncState = _serverSyncState.asSharedFlow()
 
     // Flag to enable automatic high-fidelity Local Sync when server is unreachable or offline
-    private val enableLocalSyncFallback = false
+    private val enableLocalSyncFallback = true
 
     init {
         // Initialize OkHttpClient with long timeouts for stable socket retention
@@ -66,16 +68,37 @@ class RealtimeSocketService(
             .build()
     }
 
+    fun getServerUrl(): String = serverUrl
+
+    fun getServerHostOnly(): String {
+        return serverUrl
+            .replace("ws://", "")
+            .replace("wss://", "")
+            .replace("/socket.io/?EIO=4&transport=websocket", "")
+    }
+
     fun updateServerAddress(newHost: String) {
-        val cleanHost = newHost.trim().replace("http://", "").replace("https://", "").replace("ws://", "").replace("wss://", "")
-        serverUrl = "ws://$cleanHost/socket.io/?EIO=4&transport=websocket"
+        val trimmed = newHost.trim()
+        if (trimmed.isEmpty()) return
+        
+        val isSecure = trimmed.startsWith("https://") || trimmed.startsWith("wss://") || trimmed.contains("run.app") || trimmed.contains("web.app") || trimmed.contains(".com") || trimmed.contains(".net")
+        val cleanHost = trimmed.replace("http://", "").replace("https://", "").replace("ws://", "").replace("wss://", "")
+        val protocol = if (isSecure) "wss" else "ws"
+        val resolvedUrl = "$protocol://$cleanHost/socket.io/?EIO=4&transport=websocket"
+        
+        serverUrl = resolvedUrl
+        prefs.edit().putString("server_url", resolvedUrl).apply()
         Log.d(TAG, "Updated socket server destination: $serverUrl")
+        
+        // Reconnect immediately to sync onto the new address
+        disconnect()
+        connect()
     }
 
     fun getHttpServerUrl(): String {
         val cleanHost = serverUrl.replace("ws://", "").replace("wss://", "").split("/socket.io/").firstOrNull()?.trim() ?: "10.0.2.2:3000"
-        return if (cleanHost.contains("run.app") || cleanHost.contains("localhost") || cleanHost.contains("10.0.2.2")) {
-            if (cleanHost.contains("run.app")) "https://$cleanHost" else "http://$cleanHost"
+        return if (serverUrl.startsWith("wss://") || cleanHost.contains("run.app") || cleanHost.contains("web.app")) {
+            "https://$cleanHost"
         } else {
             "http://$cleanHost"
         }
@@ -175,167 +198,171 @@ class RealtimeSocketService(
      * Distribute incoming websocket socket events to flows & room databases.
      */
     private suspend fun processRealtimeEvent(event: String, data: JSONObject) {
-        Log.i(TAG, "Processing Event [$event]: $data")
-        when (event) {
-            "room_joined" -> {
-                val roomId = data.optString("roomId", "ROOM-00")
-                this.activeRoomId = roomId
+        try {
+            Log.i(TAG, "Processing Event [$event]: $data")
+            when (event) {
+                "room_joined" -> {
+                    val roomId = data.optString("roomId", "ROOM-00")
+                    this.activeRoomId = roomId
 
-                // Load room settings
-                val roomObj = data.optJSONObject("roomState")
-                if (roomObj != null) {
-                    val entity = RoomEntity(
-                        id = roomObj.getString("id"),
-                        name = roomObj.getString("name"),
-                        description = roomObj.getString("description"),
-                        hostId = roomObj.getString("hostId"),
-                        hostUsername = roomObj.getString("hostUsername"),
-                        inviteCode = roomObj.optString("inviteCode", roomObj.getString("id")),
-                        isPlaying = roomObj.getBoolean("isPlaying"),
-                        currentSongId = roomObj.getString("currentSongId"),
-                        currentSongTitle = roomObj.getString("currentSongTitle"),
-                        currentSongArtist = roomObj.getString("currentSongArtist"),
-                        currentSongDuration = roomObj.getLong("currentSongDuration"),
-                        currentPlaybackPosition = roomObj.getLong("currentPlaybackPosition"),
-                        isLocked = roomObj.getBoolean("isLocked"),
-                        lastUpdated = roomObj.getLong("lastUpdated")
-                    )
-                    repository.updateRoomSyncState(entity)
-                }
-
-                // Sync current collaborative queue
-                val queueArr = data.optJSONArray("queue")
-                if (queueArr != null) {
-                    val roomId = data.getString("roomId")
-                    repository.clearQueue(roomId)
-                    for (i in 0 until queueArr.length()) {
-                        val item = queueArr.getJSONObject(i)
-                        repository.insertQueueItem(
-                            QueueItemEntity(
-                                roomId = roomId,
-                                videoId = item.getString("videoId"),
-                                title = item.getString("title"),
-                                artist = item.optString("artist", "Unknown Artist"),
-                                duration = item.optLong("duration", 180000),
-                                voteCount = item.optInt("voteCount", 0),
-                                addedByUserId = item.getString("addedByUserId"),
-                                addedByUsername = item.getString("addedByUsername"),
-                                position = item.optInt("position", i)
-                            )
+                    // Load room settings
+                    val roomObj = data.optJSONObject("roomState")
+                    if (roomObj != null) {
+                        val entity = RoomEntity(
+                            id = roomObj.getString("id"),
+                            name = roomObj.getString("name"),
+                            description = roomObj.getString("description"),
+                            hostId = roomObj.getString("hostId"),
+                            hostUsername = roomObj.getString("hostUsername"),
+                            inviteCode = roomObj.optString("inviteCode", roomObj.getString("id")),
+                            isPlaying = roomObj.getBoolean("isPlaying"),
+                            currentSongId = roomObj.getString("currentSongId"),
+                            currentSongTitle = roomObj.getString("currentSongTitle"),
+                            currentSongArtist = roomObj.getString("currentSongArtist"),
+                            currentSongDuration = roomObj.getLong("currentSongDuration"),
+                            currentPlaybackPosition = roomObj.getLong("currentPlaybackPosition"),
+                            isLocked = roomObj.getBoolean("isLocked"),
+                            lastUpdated = roomObj.getLong("lastUpdated")
                         )
+                        repository.updateRoomSyncState(entity)
+                    }
+
+                    // Sync collaborative queue
+                    val queueArr = data.optJSONArray("queue")
+                    if (queueArr != null) {
+                        val roomId = data.getString("roomId")
+                        repository.clearQueue(roomId)
+                        for (i in 0 until queueArr.length()) {
+                            val item = queueArr.getJSONObject(i)
+                            repository.insertQueueItem(
+                                QueueItemEntity(
+                                    roomId = roomId,
+                                    videoId = item.getString("videoId"),
+                                    title = item.getString("title"),
+                                    artist = item.optString("artist", "Unknown Artist"),
+                                    duration = item.optLong("duration", 180000),
+                                    voteCount = item.optInt("voteCount", 0),
+                                    addedByUserId = item.getString("addedByUserId"),
+                                    addedByUsername = item.getString("addedByUsername"),
+                                    position = item.optInt("position", i)
+                                )
+                            )
+                        }
+                    }
+
+                    // Sync chat history
+                    val chatArr = data.optJSONArray("chatHistory")
+                    if (chatArr != null) {
+                        val roomId = data.getString("roomId")
+                        // Insert missing chat elements
+                        for (i in 0 until chatArr.length()) {
+                            val msg = chatArr.getJSONObject(i)
+                            repository.insertChatMessage(
+                                ChatMessageEntity(
+                                    roomId = roomId,
+                                    userId = msg.getString("senderId"),
+                                    userName = msg.getString("senderName"),
+                                    userAvatar = msg.optString("senderAvatar", "⭐"),
+                                    content = msg.getString("content"),
+                                    isSystem = msg.optString("messageType", "USER") == "SYSTEM",
+                                    timestamp = msg.optLong("createdAt", System.currentTimeMillis())
+                                )
+                            )
+                        }
+                    }
+
+                    // Sync active connected user list
+                    val usersArr = data.optJSONArray("users")
+                    if (usersArr != null) {
+                        val list = mutableListOf<JSONObject>()
+                        for (i in 0 until usersArr.length()) {
+                            list.add(usersArr.getJSONObject(i))
+                        }
+                        _activeUserList.value = list
                     }
                 }
 
-                // Sync chat history
-                val chatArr = data.optJSONArray("chatHistory")
-                if (chatArr != null) {
-                    val roomId = data.getString("roomId")
-                    // Insert missing chat elements
-                    for (i in 0 until chatArr.length()) {
-                        val msg = chatArr.getJSONObject(i)
+                "user_joined" -> {
+                    Log.d(TAG, "Peer joined room session: ${data.optString("userName")}")
+                    // Insert visual presence alerts
+                    val rId = activeRoomId
+                    if (rId.isNotEmpty()) {
                         repository.insertChatMessage(
                             ChatMessageEntity(
-                                roomId = roomId,
-                                userId = msg.getString("senderId"),
-                                userName = msg.getString("senderName"),
-                                userAvatar = msg.optString("senderAvatar", "⭐"),
-                                content = msg.getString("content"),
-                                isSystem = msg.getString("messageType") == "SYSTEM",
-                                timestamp = msg.optLong("createdAt", System.currentTimeMillis())
+                                roomId = rId,
+                                userId = "SYSTEM",
+                                userName = "System",
+                                userAvatar = "⚡",
+                                content = "${data.optString("userName")} synced into this frequency space.",
+                                isSystem = true
                             )
                         )
                     }
                 }
 
-                // Sync active connected user list
-                val usersArr = data.optJSONArray("users")
-                if (usersArr != null) {
-                    val list = mutableListOf<JSONObject>()
-                    for (i in 0 until usersArr.length()) {
-                        list.add(usersArr.getJSONObject(i))
-                    }
-                    _activeUserList.value = list
+                "user_left" -> {
+                    Log.d(TAG, "Peer disconnected: ${data.optString("userName")}")
                 }
-            }
 
-            "user_joined" -> {
-                Log.d(TAG, "Peer joined room session: ${data.optString("userName")}")
-                // Insert visual presence alerts
-                val rId = activeRoomId
-                if (rId.isNotEmpty()) {
+                "new_message" -> {
+                    // Real room persistence sync
+                    val roomId = data.getString("roomId")
                     repository.insertChatMessage(
                         ChatMessageEntity(
-                            roomId = rId,
-                            userId = "SYSTEM",
-                            userName = "System",
-                            userAvatar = "⚡",
-                            content = "${data.optString("userName")} synced into this frequency space.",
-                            isSystem = true
+                            roomId = roomId,
+                            userId = data.getString("senderId"),
+                            userName = data.getString("senderName"),
+                            userAvatar = data.optString("senderAvatar", "⭐"),
+                            content = data.getString("message"),
+                            isSystem = data.optString("messageType", "USER") == "SYSTEM",
+                            timestamp = data.optLong("createdAt", System.currentTimeMillis())
                         )
                     )
                 }
-            }
 
-            "user_left" -> {
-                Log.d(TAG, "Peer disconnected: ${data.optString("userName")}")
-            }
+                "typing_update" -> {
+                    _isPeerTyping.value = data.getBoolean("isTyping")
+                    _typingPeerName.value = data.optString("userName", "")
+                }
 
-            "new_message" -> {
-                // Real room persistence sync
-                val roomId = data.getString("roomId")
-                repository.insertChatMessage(
-                    ChatMessageEntity(
-                        roomId = roomId,
-                        userId = data.getString("senderId"),
-                        userName = data.getString("senderName"),
-                        userAvatar = data.optString("senderAvatar", "⭐"),
-                        content = data.getString("message"),
-                        isSystem = data.getString("messageType") == "SYSTEM",
-                        timestamp = data.optLong("createdAt", System.currentTimeMillis())
-                    )
-                )
-            }
+                "room_reactions" -> {
+                    _incomingEmoji.emit(data.getString("emoji"))
+                }
 
-            "typing_update" -> {
-                _isPeerTyping.value = data.getBoolean("isTyping")
-                _typingPeerName.value = data.optString("userName", "")
-            }
+                "playback_started", "playback_paused", "playback_seeked" -> {
+                    _serverSyncState.emit(data)
+                }
 
-            "room_reactions" -> {
-                _incomingEmoji.emit(data.getString("emoji"))
-            }
-
-            "playback_started", "playback_paused", "playback_seeked" -> {
-                _serverSyncState.emit(data)
-            }
-
-            "queue_updated" -> {
-                val queueArr = data.optJSONArray("queue")
-                val rId = activeRoomId
-                if (rId.isNotEmpty() && queueArr != null) {
-                    repository.clearQueue(rId)
-                    for (i in 0 until queueArr.length()) {
-                        val item = queueArr.getJSONObject(i)
-                        repository.insertQueueItem(
-                            QueueItemEntity(
-                                roomId = rId,
-                                videoId = item.getString("videoId"),
-                                title = item.getString("title"),
-                                artist = item.optString("artist", "Unknown Artist"),
-                                duration = item.optLong("duration", 180000),
-                                voteCount = item.optInt("voteCount", 0),
-                                addedByUserId = item.getString("addedByUserId"),
-                                addedByUsername = item.getString("addedByUsername"),
-                                position = item.optInt("position", i)
+                "queue_updated" -> {
+                    val queueArr = data.optJSONArray("queue")
+                    val rId = activeRoomId
+                    if (rId.isNotEmpty() && queueArr != null) {
+                        repository.clearQueue(rId)
+                        for (i in 0 until queueArr.length()) {
+                            val item = queueArr.getJSONObject(i)
+                            repository.insertQueueItem(
+                                QueueItemEntity(
+                                    roomId = rId,
+                                    videoId = item.getString("videoId"),
+                                    title = item.getString("title"),
+                                    artist = item.optString("artist", "Unknown Artist"),
+                                    duration = item.optLong("duration", 180000),
+                                    voteCount = item.optInt("voteCount", 0),
+                                    addedByUserId = item.getString("addedByUserId"),
+                                    addedByUsername = item.getString("addedByUsername"),
+                                    position = item.optInt("position", i)
+                                )
                             )
-                        )
+                        }
                     }
                 }
-            }
 
-            "sync_state" -> {
-                _serverSyncState.emit(data)
+                "sync_state" -> {
+                    _serverSyncState.emit(data)
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Uncaught error processing realtime socket event: ${e.message}", e)
         }
     }
 
