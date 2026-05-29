@@ -199,6 +199,28 @@ const CURATED_FALLBACKS = [
 
 const https = require('https');
 
+function fetchJSON(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`HTTP Error ${res.statusCode}: ${data || 'Empty Response'}`));
+          } else {
+            resolve(JSON.parse(data));
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }).on('error', (err) => {
+      reject(err);
+    });
+  });
+}
+
 function fetchYouTubeHTML(query) {
   return new Promise((resolve, reject) => {
     const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%253D%253D`;
@@ -291,7 +313,8 @@ app.get('/api/search', async (req, res) => {
     return res.json([]);
   }
 
-  const apiKey = process.env.YOUTUBE_API_KEY;
+  // Support any of the common Google/YouTube/Gemini API key names configured in the Secrets panel
+  const apiKey = process.env.YOUTUBE_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'YOUR_YOUTUBE_API_KEY' || apiKey.trim() === '') {
     console.warn("[YouTube Proxy] API key empty/missing from .env! Deploying live web-scraper fallback...");
     const liveResults = await scrapeYouTubeSearch(trimmed);
@@ -312,17 +335,7 @@ app.get('/api/search', async (req, res) => {
   try {
     // 1) Query Google YouTube search.list
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${encodeURIComponent(query)}&type=video&key=${apiKey}`;
-    const searchRes = await fetch(searchUrl);
-    if (!searchRes.ok) {
-      console.error("[YouTube Proxy] Upstream API error. Toggling fallback live search scraper...");
-      const liveResults = await scrapeYouTubeSearch(trimmed);
-      if (liveResults && liveResults.length > 0) {
-        return res.json(liveResults);
-      }
-      return res.json(CURATED_FALLBACKS);
-    }
-
-    const searchData = await searchRes.json();
+    const searchData = await fetchJSON(searchUrl);
     const items = searchData.items || [];
     if (items.length === 0) {
       return res.json([]);
@@ -335,16 +348,17 @@ app.get('/api/search', async (req, res) => {
 
     // 2) Query Google YouTube videos.list for detailed durations and view counts
     const videoDetailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds.join(',')}&key=${apiKey}`;
-    const detailsRes = await fetch(videoDetailsUrl);
     let detailsMap = {};
-    if (detailsRes.ok) {
-      const detailsData = await detailsRes.json();
+    try {
+      const detailsData = await fetchJSON(videoDetailsUrl);
       (detailsData.items || []).forEach(v => {
         detailsMap[v.id] = {
           duration: parseISO8601Duration(v.contentDetails.duration),
           viewCount: formatViewCount(v.statistics.viewCount)
         };
       });
+    } catch (errDetails) {
+      console.error("[YouTube Proxy] Failed to fetch video details, continuing with defaults:", errDetails.message);
     }
 
     // 3) Map to beautiful SongSearchModels for the Jetpack Compose frontend
@@ -364,7 +378,7 @@ app.get('/api/search', async (req, res) => {
 
     res.json(results);
   } catch (err) {
-    console.error("[YouTube Proxy] Fetch error, returning live scraper fallback:", err);
+    console.error("[YouTube Proxy] Upstream API call failed, falling back to live scraper:", err.message || err);
     const fallbackResults = await scrapeYouTubeSearch(trimmed);
     if (fallbackResults && fallbackResults.length > 0) {
       return res.json(fallbackResults);

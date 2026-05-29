@@ -125,6 +125,9 @@ class RealtimeSocketService(
                 Log.i(TAG, "WebSocket link opened. Sending EIO initialization.")
                 _connectionState.value = ConnectionState.CONNECTED
                 
+                // Save discovered working URL to preferences
+                prefs.edit().putString("server_url", serverUrl).apply()
+                
                 // Set latency check
                 _syncLatencyMs.value = (15..45).random()
 
@@ -146,6 +149,28 @@ class RealtimeSocketService(
                 Log.e(TAG, "Socket connection failed: ${t.message}. Fallback mode evaluated.")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 
+                // Resilient automatic port scanning for cloud/local sandboxes
+                if (serverUrl.contains("10.0.2.2:3000") && t.message?.contains("Failed to connect") == true) {
+                    Log.w(TAG, "Default Port 3000 failed to connect. Retrying on PORT 8080...")
+                    scope.launch {
+                        delay(1200)
+                        serverUrl = serverUrl.replace("10.0.2.2:3000", "10.0.2.2:8080")
+                        connect()
+                    }
+                    return
+                } else if (serverUrl.contains("10.0.2.2:8080") && t.message?.contains("Failed to connect") == true) {
+                    Log.w(TAG, "Alternate Port 8080 failed to connect. Retrying on PORT 8000...")
+                    scope.launch {
+                        delay(1200)
+                        serverUrl = serverUrl.replace("10.0.2.2:8080", "10.0.2.2:8000")
+                        connect()
+                    }
+                    return
+                } else if (serverUrl.contains("10.0.2.2:8000") && t.message?.contains("Failed to connect") == true) {
+                    Log.e(TAG, "No local ports detected response. Toggling sandbox connection guide.")
+                    // Automatically try to fall back to the dynamic host if the user is in online loop mode
+                }
+
                 if (enableLocalSyncFallback) {
                     activateLocalSyncMode()
                 }

@@ -42,18 +42,19 @@ import com.example.viewmodel.LoopTogetherViewModel
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.RenderProcessGoneDetail
 import com.example.ui.components.frostedGlassBackground
 
 class WebPlaybackBridgeValue(
-    private val onStateTick: (isPlaying: Boolean, positionSecs: Float) -> Unit
+    private val onStateTick: (isPlaying: Boolean, positionSecs: Double) -> Unit
 ) {
     @android.webkit.JavascriptInterface
-    fun onStateChange(isPlaying: Boolean, currentTime: Float) {
+    fun onStateChange(isPlaying: Boolean, currentTime: Double) {
         onStateTick(isPlaying, currentTime)
     }
 
     @android.webkit.JavascriptInterface
-    fun onTick(isPlaying: Boolean, currentTime: Float) {
+    fun onTick(isPlaying: Boolean, currentTime: Double) {
         onStateTick(isPlaying, currentTime)
     }
 }
@@ -67,6 +68,11 @@ fun YouTubeVideoPlayer(
     onLocalPlayerChanged: (isPlaying: Boolean, positionMs: Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentIsPlaying = rememberUpdatedState(isPlaying)
+    val currentPlaybackPositionMs = rememberUpdatedState(playbackPositionMs)
+    val currentIsHost = rememberUpdatedState(isHost)
+    val currentOnLocalPlayerChanged = rememberUpdatedState(onLocalPlayerChanged)
+
     val iframeHtml = remember(videoId) {
         """
         <!DOCTYPE html>
@@ -202,7 +208,15 @@ fun YouTubeVideoPlayer(
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
-                webViewClient = WebViewClient()
+                webViewClient = object : WebViewClient() {
+                    override fun onRenderProcessGone(
+                        view: WebView?,
+                        detail: android.webkit.RenderProcessGoneDetail?
+                    ): Boolean {
+                        android.util.Log.e("TVP", "WebView renderer process went away. Gracefully returning true to prevent OS termination.")
+                        return true
+                    }
+                }
                 settings.apply {
                     javaScriptEnabled = true
                     mediaPlaybackRequiresUserGesture = false
@@ -213,16 +227,25 @@ fun YouTubeVideoPlayer(
                 // Mount JS Bridge for real-time upstream sync reporting
                 addJavascriptInterface(
                     WebPlaybackBridgeValue { localPlaying, posSecs ->
-                        val localPosMs = (posSecs * 1000).toLong()
-                        // Avoid recomposition loop: only update VM if play state changed or there's a heavy manual seek
-                        val stateChanged = isPlaying != localPlaying
-                        val positionDrifted = kotlin.math.abs(playbackPositionMs - localPosMs) > 3000L
-                        
-                        // Only Host can command authoritative sync actions back to viewModel
-                        if (isHost && (stateChanged || positionDrifted)) {
-                            post {
-                                onLocalPlayerChanged(localPlaying, localPosMs)
+                        try {
+                            val localPosMs = (posSecs * 1000).toLong()
+                            
+                            val isPlayingLatest = currentIsPlaying.value
+                            val positionMsLatest = currentPlaybackPositionMs.value
+                            val isHostLatest = currentIsHost.value
+                            val onChangedLatest = currentOnLocalPlayerChanged.value
+
+                            val stateChanged = isPlayingLatest != localPlaying
+                            val positionDrifted = kotlin.math.abs(positionMsLatest - localPosMs) > 3000L
+                            
+                            // Only Host can command authoritative sync actions back to viewModel
+                            if (isHostLatest && (stateChanged || positionDrifted)) {
+                                post {
+                                    onChangedLatest(localPlaying, localPosMs)
+                                }
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.e("TVP", "JS Bridge execution failed safely: ${e.message}")
                         }
                     },
                     "AndroidInterface"
